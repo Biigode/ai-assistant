@@ -149,7 +149,7 @@ export async function handleChatMessage(chatId, message, name) {
   console.log(`   Intent: needsSearch=${intent.needsSearch}, type=${intent.analysisType}, query="${intent.searchQuery}"`);
   
   if (intent.analysisType === 'greeting') {
-    return await handleGreeting(chatId, name, userInterests);
+    return await handleGreeting(chatId, name, user);
   }
   
   if (intent.needsSearch) {
@@ -317,17 +317,27 @@ export async function handleNewsDetail(chatId, index, name) {
   return true;
 }
 
-async function handleGreeting(chatId, name, userInterests) {
+async function handleGreeting(chatId, name, user) {
+  const userInterests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
+  const hasProfile = user?.name && user?.interests?.some(i => i.active);
+  
   let response = `Olá ${name}! 👋\n\n`;
   
-  if (userInterests.length > 0) {
+  if (hasProfile) {
     response += `Seus interesses: ${userInterests.join(', ')}\n\n`;
     response += `Posso te ajudar a buscar notícias, ideias para vídeos, ou comparar produtos.\n`;
     response += `É só me mandar uma mensagem!\n\n`;
     response += `Use /perfil para ver seus interesses.`;
   } else {
-    response += `Você ainda não tem interesses configurados.\n`;
-    response += `Use /configurar para configurar seus interesses!`;
+    response += `Bem-vindo ao Daily Digest Bot!\n\n`;
+    response += `Eu te ajudo a:\n`;
+    response += `📰 Receber um resumo diário de notícias\n`;
+    response += `🔍 Buscar informações na internet\n`;
+    response += `🎬 Gerar ideias para seus vídeos\n`;
+    response += `🛒 Comparar produtos\n\n`;
+    response += `Para começar, configure seus interesses com:\n`;
+    response += `/configurar\n\n`;
+    response += `Ou use /help para ver todos os comandos.`;
   }
   
   return await sendLongTelegram(response, chatId);
