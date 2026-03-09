@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    container_name: daily-digest-app
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3.2:1b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
