@@ -83,6 +83,25 @@ export async function handleChatMessage(chatId, message, name) {
   return await handleGeneralChat(chatId, message, name);
 }
 
+function indicatesNoAccess(response) {
+  const lower = response.toLowerCase();
+  const phrases = [
+    'não tenho acesso',
+    'não posso acessar',
+    'não tenho informação',
+    'não tenho dados',
+    'sem acesso',
+    'informações em tempo real',
+    'atualizar meus dados',
+    'base de dados',
+    'não foi possível encontrar',
+    'não encontrei',
+    'pesquise em',
+    'visite o site'
+  ];
+  return phrases.some(p => lower.includes(p));
+}
+
 async function smartSearch(chatId, userMessage, query, analysisType, name) {
   const typeLabels = {
     product: '🛒 Análise de Produto',
@@ -119,12 +138,16 @@ async function smartSearch(chatId, userMessage, query, analysisType, name) {
       analysis = await analyzeGeneral(results, userMessage);
   }
 
-  if (!analysis) {
-    return await sendLongTelegram(
-      `⚠️ Encontrei resultados mas não consegui analisar.\n\n` +
-      results.slice(0, 3).map((r, i) => `${i + 1}. ${r.title}\n${r.link}`).join('\n\n'),
-      chatId
-    );
+  if (!analysis || indicatesNoAccess(analysis)) {
+    let fallback = `📰 Resultados para "${userMessage}":\n\n`;
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      fallback += `${i + 1}. ${r.title}\n`;
+      fallback += `   Fonte: ${r.source}\n`;
+      fallback += `   ${r.link}\n\n`;
+    }
+    fallback += `Verifique as informações nos links acima.`;
+    analysis = fallback;
   }
 
   const response = `🔍 Resultado da busca:\n\n${analysis}\n\nVerifique as informacoes nas fontes originais`;
