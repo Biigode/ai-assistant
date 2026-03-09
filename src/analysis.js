@@ -10,7 +10,7 @@ function buildContext(results) {
   let context = '';
   for (const [topic, articles] of Object.entries(results)) {
     if (!articles.length) continue;
-    context += `\n## ${topic}\n`;
+    context += `\n=== ${topic} ===\n`;
     articles.forEach((a, i) => {
       context += `${i + 1}. ${a.title}\n`;
       context += `   ${a.snippet || ''}\n`;
@@ -28,18 +28,20 @@ export async function analyzeProduct(results, userQuery) {
 O usuário quer: "${userQuery}"
 
 Analise os resultados abaixo e retorne um resumo com:
-1. **Melhores opções** - liste 2-3 produtos com base nos resultados
-2. **Pontos positivos** de cada um
-3. **Pontos negativos** ou pontos de atenção
-4. **Recomendação final** - qual vale mais a pena e por quê
-5. **Veredicto final** em uma linha
+1. Melhores opções - liste 2-3 produtos com base nos resultados
+2. Pontos positivos de cada um
+3. Pontos negativos ou pontos de atenção
+4. Recomendação final - qual vale mais a pena e por quê
+5. Veredicto final em uma linha
 
 Os resultados são da web, podem não ser exatamente produtos. Analise o que encontrou.
+
+IMPORTANTE: Use apenas texto simples, sem negrito, sem asteriscos, sem hashtags. Use apenas emojis simples se quiser.
 
 Resultados:
 ${context}
 
-Resposta em português brasileiro, use Markdown:`;
+Resposta em português brasileiro, texto puro:`;
 
   try {
     const response = await ollama.generate({
@@ -61,16 +63,18 @@ export async function analyzeContent(results, userQuery) {
 O usuário é um YouTuber e perguntou: "${userQuery}"
 
 Analise os resultados e retorne:
-1. **Resumo das notícias** - síntese dos principais pontos (2-3 parágrafos)
-2. **Ideias de vídeo** - 3-5 sugestões de vídeos baseadas nas notícias
-   - Para cada ideia: título sugerido e por que é relevante
-3. **Ângulos de conteúdo** - formas diferentes de abordar o tema
-4. **Hashtags sugeridas**
+1. Resumo das notícias - síntese dos principais pontos (2-3 parágrafos)
+2. Ideias de vídeo - 3-5 sugestões de vídeos baseadas nas notícias
+   Para cada ideia: título sugerido e por que é relevante
+3. Ângulos de conteúdo - formas diferentes de abordar o tema
+4. Hashtags sugeridas
+
+IMPORTANTE: Use apenas texto simples, sem negrito, sem asteriscos, sem hashtags. Use apenas emojis simples se quiser.
 
 Resultados:
 ${context}
 
-Resposta em português brasileiro, use Markdown:`;
+Resposta em português brasileiro, texto puro:`;
 
   try {
     const response = await ollama.generate({
@@ -92,15 +96,17 @@ export async function analyzeNews(results, userQuery) {
 O usuário quer saber sobre: "${userQuery}"
 
 Analise os resultados e retorne:
-1. **Resumo** - síntese das principais notícias (3-4 parágrafos)
-2. **Pontos-chave** - bullet points dos fatos mais importantes
-3. **Contexto** -背景 relevante para entender a situação
-4. **O que acompanhar** - próximos passos ou desenvolvimentos esperados
+1. Resumo - síntese das principais notícias (3-4 parágrafos)
+2. Pontos-chave - bullet points dos fatos mais importantes
+3. Contexto relevante para entender a situação
+4. O que acompanhar - próximos passos ou desenvolvimentos esperados
+
+IMPORTANTE: Use apenas texto simples, sem negrito, sem asteriscos, sem hashtags. Use apenas emojis simples se quiser.
 
 Resultados:
 ${context}
 
-Resposta em português brasileiro, use Markdown:`;
+Resposta em português brasileiro, texto puro:`;
 
   try {
     const response = await ollama.generate({
@@ -126,10 +132,12 @@ Se os resultados forem sobre produtos, compare-os.
 Se forem notícias, resuma os pontos principais.
 Se forem informações gerais, sintetize da melhor forma.
 
+IMPORTANTE: Use apenas texto simples, sem negrito, sem asteriscos, sem hashtags. Use apenas emojis simples se quiser.
+
 Resultados:
 ${context}
 
-Resposta em português brasileiro, use Markdown:`;
+Resposta em português brasileiro, texto puro:`;
 
   try {
     const response = await ollama.generate({

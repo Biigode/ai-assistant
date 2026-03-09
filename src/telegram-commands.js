@@ -72,7 +72,7 @@ async function handleStart(chatId, user, botToken) {
 }
 
 async function handleHelp(chatId, botToken) {
-  const message = `📖 *Comandos disponíveis:*
+  const message = `📖 Comandos disponíveis:
 
 /start - Iniciar ou reiniciar
 /perfil - Ver seu perfil atual
@@ -82,11 +82,11 @@ async function handleHelp(chatId, botToken) {
 /horario - Alterar horário do digest
 /estilo - Alterar estilo do resumo
 
-💬 *Conversa livre:*
+💬 Conversa livre:
 Basta me enviar qualquer mensagem e eu responderei!
 
-🔍 *Buscas:*
-"Me расскажи sobre X" ou "buscar produto Y"`;
+🔍 Buscas:
+"Me conte sobre X" ou "buscar produto Y"`;
 
   return await sendLongTelegram(message, chatId, botToken);
 }
@@ -99,7 +99,7 @@ async function handleProfile(chatId, user, botToken) {
   const interests = user.interests?.filter(i => i.active).map(i => i.topic) || [];
   const settings = user.digestSettings || {};
   
-  const message = `👤 *Seu Perfil*
+  const message = `👤 Seu Perfil
 
 📛 Nome: ${user.name}
 📌 Interesses (${interests.length}):
@@ -124,7 +124,7 @@ async function handleInterests(chatId, user, botToken) {
   }
   
   return await sendLongTelegram(
-    `📌 *Seus interesses:*\n\n${interests.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\n/adicionar - Adicionar mais\n/remover - Remover algum`,
+    `📌 Seus interesses:\n\n${interests.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\n/adicionar - Adicionar mais\n/remover - Remover algum`,
     chatId,
     botToken
   );
@@ -275,7 +275,7 @@ export async function handleInteractiveResponse(chatId, response, user, botToken
     });
     
     await sendLongTelegram(
-      `✅ *Perfil configurado com sucesso!*\n\n📛 Nome: ${name}\n📌 Interesses: ${topics.join(', ')}\n⏰ Horário: ${schedule}\n📝 Estilo: ${style}\n\nAgora você receberá um digest diário! Use /perfil para ver ou /adicionar para adicionar mais interesses.`,
+      `✅ Perfil configurado com sucesso!\n\n📛 Nome: ${name}\n📌 Interesses: ${topics.join(', ')}\n⏰ Horário: ${schedule}\n📝 Estilo: ${style}\n\nAgora você receberá um digest diário! Use /perfil para ver ou /adicionar para adicionar mais interesses.`,
       chatId,
       botToken
     );

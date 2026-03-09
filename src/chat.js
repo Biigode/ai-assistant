@@ -130,7 +130,7 @@ async function smartSearch(chatId, userMessage, query, analysisType, name) {
     );
   }
 
-  const response = `🔍 *Resultado da busca:*\n\n${analysis}\n\n_Verifique as informações nas fontes originais_`;
+  const response = `🔍 Resultado da busca:\n\n${analysis}\n\nVerifique as informacoes nas fontes originais`;
 
   addToHistory(chatId, 'assistant', analysis);
 
@@ -168,11 +168,11 @@ export async function handleNewsDetail(chatId, index, name) {
   const r = lastResults[itemIndex];
   
   await sendLongTelegram(
-    `📰 *${r.title}*\n\n` +
+    `📰 ${r.title}\n\n` +
     `📰 Fonte: ${r.source}\n` +
     `🔗 ${r.link}\n\n` +
-    `📝 *Resumo:*\n${r.snippet}\n\n` +
-    `⚠️ *Verifique a notícia na fonte original!*`,
+    `📝 Resumo:\n${r.snippet}\n\n` +
+    `⚠️ Verifique a noticia na fonte original!`,
     chatId
   );
   

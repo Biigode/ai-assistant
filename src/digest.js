@@ -79,14 +79,14 @@ export async function runDigestForUser(user) {
 }
 
 async function sendSourcesList(searchResults, chatId) {
-  let sourcesMsg = `\n📋 *Fontes e Links para Verificação*\n\n`;
-  sourcesMsg += `⚠️ *Importante:* Sempre verifique as fontes antes de compartilhar notícias!\n\n`;
+  let sourcesMsg = `\n📋 Fontes e Links para Verificacao\n\n`;
+  sourcesMsg += `⚠️ Importante: Sempre verifique as fontes antes de compartilhar noticias!\n\n`;
 
   let count = 1;
   for (const [topic, articles] of Object.entries(searchResults)) {
     if (!articles.length) continue;
     
-    sourcesMsg += `*${topic}:*\n`;
+    sourcesMsg += `${topic}:\n`;
     
     for (const article of articles) {
       sourcesMsg += `${count}. ${article.title}\n`;
@@ -96,7 +96,7 @@ async function sendSourcesList(searchResults, chatId) {
     }
   }
 
-  sourcesMsg += `_Verifique sempre as fontes oficiais para evitar fake news!_`;
+  sourcesMsg += `Verifique sempre as fontes oficiais para evitar fake news!`;
 
   await sendLongTelegram(sourcesMsg, chatId);
 }

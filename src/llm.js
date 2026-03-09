@@ -88,14 +88,14 @@ export async function generateDigest(searchResults, settings = {}) {
   let context = '';
   for (const [topic, articles] of Object.entries(searchResults)) {
     if (!articles.length) continue;
-    context += `\n### ${topic}\n`;
+    context += `\n=== ${topic} ===\n`;
     articles.forEach((a, i) => {
       context += `${i + 1}. ${a.title}\n   ${a.snippet}\n   Fonte: ${a.source}\n`;
     });
   }
 
   if (!context.trim()) {
-    return `📰 *Seu Digest Diário*\n\nOlá ${name}! Não encontrei novidades para hoje nos seus tópicos de interesse. Até amanhã! 👋`;
+    return `📰 Seu Digest Diario\n\nOlá ${name}! Não encontrei novidades para hoje nos seus tópicos de interesse. Até amanhã! 👋`;
   }
 
   const styleInstructions = {
@@ -105,21 +105,22 @@ export async function generateDigest(searchResults, settings = {}) {
   };
 
   const prompt = `Você é um assistente de curadoria de notícias. 
-Monte uma mensagem de resumo diário para WhatsApp para o usuário chamado ${name}.
+Monte uma mensagem de resumo diário para o usuário chamado ${name}.
 
 Regras de formatação:
 - Use emojis relevantes para deixar a mensagem mais amigável
-- Comece com "📰 *Digest Diário - [data de hoje]*"
-- Use *negrito* para nomes de tópicos (usando asteriscos do WhatsApp)
+- Use apenas texto simples, sem negrito, sem asteriscos
 - ${styleInstructions[summaryStyle] || styleInstructions['bullet-points']}
 - Termine com uma frase de encerramento amigável
 - Máximo de 1500 caracteres no total
 - Escreva em português do Brasil
 
+IMPORTANTE: Use apenas texto simples, sem asteriscos, sem negrito.
+
 Artigos encontrados:
 ${context}
 
-Mensagem formatada para WhatsApp:`;
+Mensagem formatada:`;
 
   try {
     console.log('🤖 Gerando resumo com LLM local...');
@@ -134,10 +135,10 @@ Mensagem formatada para WhatsApp:`;
     console.error('❌ Erro ao gerar digest com LLM:', err.message);
 
     // Fallback: monta mensagem simples sem LLM
-    let fallback = `📰 *Digest Diário*\n\nOlá ${name}! Aqui estão as novidades:\n\n`;
+    let fallback = `📰 Digest Diario\n\nOlá ${name}! Aqui estão as novidades:\n\n`;
     for (const [topic, articles] of Object.entries(searchResults)) {
       if (!articles.length) continue;
-      fallback += `*${topic}*\n`;
+      fallback += `${topic}:\n`;
       articles.slice(0, 2).forEach(a => {
         fallback += `• ${a.title}\n`;
       });
