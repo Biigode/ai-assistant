@@ -28,20 +28,17 @@ function buildContext(chatId) {
 }
 
 export async function analyzeUserIntent(message) {
-  const prompt = `Analise a mensagem do usuário e determine se precisa buscar informações na internet.
+  const prompt = `Analise a mensagem do usuário.
 
-Retorne APENAS um JSON válido (sem texto extra):
-{
-  "needsSearch": true ou false,
-  "searchQuery": "query de busca em português se needsSearch=true, caso contrário vazio",
-  "analysisType": "product" | "content" | "news" | "general"
-}
+Retorne APENAS um JSON válido:
+{"needsSearch": true/false, "searchQuery": "query em português", "analysisType": "product|content|news|general"}
 
-Regras para analysisType:
-- "product": quando o usuário quer comprar, comparar, avaliar produtos (TV, celular, notebook, câmera, etc)
-- "content": quando o usuário é creator/YouTuber e quer ideias, tendências, notícias sobre nicho
-- "news": quando o usuário quer notícias, atualizações, eventos atuais
-- "general": qualquer outra dúvida que precise de informação atualizada
+Regras:
+- needsSearch=true se a mensagem pede informação, notícia, resumo, comparação
+- news: quando quer notícias, resumo, informações atuais sobre qualquer tema
+- product: comparando produtos para comprar
+- content: para criar vídeos/conteúdo
+- general: outras dúvidas
 
 Mensagem: "${message}"
 
@@ -51,7 +48,7 @@ JSON:`;
     const response = await ollama.generate({
       model: MODEL,
       prompt,
-      options: { temperature: 0.1, num_predict: 150 }
+      options: { temperature: 0.1, num_predict: 200 }
     });
 
     const raw = response.response.trim();
