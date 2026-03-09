@@ -27,8 +27,20 @@ function buildContext(chatId) {
   return history.map(m => `${m.role}: ${m.content}`).join('\n');
 }
 
-export async function analyzeUserIntent(message, previousMessage = null) {
+export async function analyzeUserIntent(message, previousMessage = null, userInterests = []) {
   const lower = message.toLowerCase();
+  
+  const greetings = ['olá', 'ola', 'oi', 'ei', 'eai', 'hi', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'boa'];
+  const isGreeting = greetings.some(g => lower.trim() === g || lower.startsWith(g + ' ') || lower === g + '!');
+  
+  if (isGreeting) {
+    return { needsSearch: false, searchQuery: '', analysisType: 'greeting' };
+  }
+  
+  const shortMessages = message.trim().length < 3;
+  if (shortMessages) {
+    return { needsSearch: false, searchQuery: '', analysisType: 'general' };
+  }
   
   const forceSearchPhrases = [
     'buscar', 'procurar', 'pesquisar', 'busca', 'procure', 'pesquise',
@@ -73,25 +85,30 @@ export async function analyzeUserIntent(message, previousMessage = null) {
     searchQuery = previousMessage;
     console.log(`   Usando mensagem anterior como query: "${searchQuery}"`);
   }
+  
+  const interestsContext = userInterests.length > 0 ? `Interesses do usuário: ${userInterests.join(', ')}` : '';
 
-  const prompt = `Gere uma query de busca boa para encontrar informações relevantes.
+  const prompt = `Gere uma query de busca.curta e específica (máximo 5 palavras).
 
-Regras:
-- searchQuery: query curta (3-8 palavras) em português, seja específico
+${interestsContext}
+
+Mensagem: "${searchQuery}"
+
+Retorne JSON com:
+- searchQuery: query em português, curta
 - analysisType: "product" | "content" | "news" | "general"
-- analysisType content = para criar vídeos, ideias para YouTube, programadores
-- analysisType news = notícias, tendências atuais
 
-Mensagem original: "${message}"
-Para buscar: "${searchQuery}"
+Exemplos:
+- "meu youtube sobre tecnologia" → {"searchQuery": "tecnologia tendências 2026", "analysisType": "content"}
+- "qual melhor notebook para programador" → {"searchQuery": "melhor notebook programador 2026", "analysisType": "product"}
 
-Retorne JSON: {"searchQuery": "...", "analysisType": "..."}`;
+JSON:`;
 
   try {
     const response = await ollama.generate({
       model: MODEL,
       prompt,
-      options: { temperature: 0.1, num_predict: 150 }
+      options: { temperature: 0.1, num_predict: 100 }
     });
 
     const raw = response.response.trim();
@@ -124,11 +141,19 @@ export async function handleChatMessage(chatId, message, name) {
   
   addToHistory(chatId, 'user', message);
   
-  const intent = await analyzeUserIntent(message, previousMessage);
+  const { findUserByChatId } = await import('../models/UserPreferences.js');
+  const user = await findUserByChatId(chatId);
+  const userInterests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
+  
+  const intent = await analyzeUserIntent(message, previousMessage, userInterests);
   console.log(`   Intent: needsSearch=${intent.needsSearch}, type=${intent.analysisType}, query="${intent.searchQuery}"`);
-
+  
+  if (intent.analysisType === 'greeting') {
+    return await handleGreeting(chatId, name, userInterests);
+  }
+  
   if (intent.needsSearch) {
-    return await smartSearch(chatId, message, intent.searchQuery, intent.analysisType, name);
+    return await smartSearch(chatId, message, intent.searchQuery, intent.analysisType, name, userInterests);
   }
 
   return await handleGeneralChat(chatId, message, name);
@@ -173,7 +198,7 @@ function looksLikeGenericResults(analysis, results) {
   return false;
 }
 
-async function smartSearch(chatId, userMessage, query, analysisType, name) {
+async function smartSearch(chatId, userMessage, query, analysisType, name, userInterests = []) {
   const typeLabels = {
     product: '🛒 Análise de Produto',
     content: '🎬 Ideias para Conteúdo',
@@ -181,7 +206,7 @@ async function smartSearch(chatId, userMessage, query, analysisType, name) {
     general: '🔍 Informação'
   };
 
-  await sendLongTelegram(`${typeLabels[analysisType] || '🔍'} Buscando informações...`, chatId);
+  await sendLongTelegram(`${typeLabels[analysisType] || '🔍'} Buscando...`, chatId);
 
   let results = await searchTopic(query, 5);
 
@@ -290,6 +315,22 @@ export async function handleNewsDetail(chatId, index, name) {
   );
   
   return true;
+}
+
+async function handleGreeting(chatId, name, userInterests) {
+  let response = `Olá ${name}! 👋\n\n`;
+  
+  if (userInterests.length > 0) {
+    response += `Seus interesses: ${userInterests.join(', ')}\n\n`;
+    response += `Posso te ajudar a buscar notícias, ideias para vídeos, ou comparar produtos.\n`;
+    response += `É só me mandar uma mensagem!\n\n`;
+    response += `Use /perfil para ver seus interesses.`;
+  } else {
+    response += `Você ainda não tem interesses configurados.\n`;
+    response += `Use /configurar para configurar seus interesses!`;
+  }
+  
+  return await sendLongTelegram(response, chatId);
 }
 
 async function handleGeneralChat(chatId, message, name) {
