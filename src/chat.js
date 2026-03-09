@@ -67,6 +67,17 @@ export async function analyzeUserIntent(message, previousMessage = null, userInt
 
   let analysisType = 'general';
   
+  const profilePhrases = [
+    'meu daily', 'meu digest', 'daily digest',
+    'meu perfil', 'meus interesses', 'minhas noticias',
+    'o que eu', 'quais meus', 'quais as minhas',
+    'sobre mim', 'minha configuracao', 'minha conta'
+  ];
+  
+  if (profilePhrases.some(p => lower.includes(p))) {
+    return { needsSearch: false, searchQuery: '', analysisType: 'profile' };
+  }
+  
   if (contentPhrases.some(p => lower.includes(p))) {
     analysisType = 'content';
   } else if (productPhrases.some(p => lower.includes(p))) {
@@ -88,7 +99,8 @@ export async function analyzeUserIntent(message, previousMessage = null, userInt
   
   const interestsContext = userInterests.length > 0 ? `Interesses do usuário: ${userInterests.join(', ')}` : '';
 
-  const prompt = `Gere uma query de busca.curta e específica (máximo 5 palavras).
+  const prompt = `Gere uma query de busca.curta e específica (máximo 6 palavras).
+IMPORTANTE: Se a mensagem for sobre notícias em geral ou algo vago, use os interesses do usuário para fazer a busca.
 
 ${interestsContext}
 
@@ -101,6 +113,7 @@ Retorne JSON com:
 Exemplos:
 - "meu youtube sobre tecnologia" → {"searchQuery": "tecnologia tendências 2026", "analysisType": "content"}
 - "qual melhor notebook para programador" → {"searchQuery": "melhor notebook programador 2026", "analysisType": "product"}
+- "notícias" (usuário tem interesses em tecnologia) → {"searchQuery": "tecnologia IA inovação 2026", "analysisType": "news"}
 
 JSON:`;
 
@@ -150,6 +163,10 @@ export async function handleChatMessage(chatId, message, name) {
   
   if (intent.analysisType === 'greeting') {
     return await handleGreeting(chatId, name, user);
+  }
+  
+  if (intent.analysisType === 'profile') {
+    return await handleProfileQuery(chatId, name, user);
   }
   
   if (intent.needsSearch) {
@@ -315,6 +332,34 @@ export async function handleNewsDetail(chatId, index, name) {
   );
   
   return true;
+}
+
+async function handleProfileQuery(chatId, name, user) {
+  const userInterests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
+  const settings = user?.digestSettings || {};
+  const schedule = settings.cronSchedule || '08:00';
+  const style = settings.summaryStyle || 'bullet-points';
+  
+  let response = `📋 Seu Perfil\n\n`;
+  
+  if (user?.name) {
+    response += `📛 Nome: ${user.name}\n`;
+  }
+  
+  if (userInterests.length > 0) {
+    response += `\n📌 Seus interesses:\n`;
+    userInterests.forEach((interest, i) => {
+      response += `   ${i + 1}. ${interest}\n`;
+    });
+    response += `\n⏰ Horário do digest: ${schedule}\n`;
+    response += `📝 Estilo: ${style}\n`;
+  } else {
+    response += `Você ainda não tem interesses configurados.\n`;
+  }
+  
+  response += `\nUse /configurar para alterar ou /adicionar para adicionar mais interesses.`;
+  
+  return await sendLongTelegram(response, chatId);
 }
 
 async function handleGreeting(chatId, name, user) {
