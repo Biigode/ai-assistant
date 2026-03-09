@@ -340,24 +340,44 @@ async function handleProfileQuery(chatId, name, user) {
   const schedule = settings.cronSchedule || '08:00';
   const style = settings.summaryStyle || 'bullet-points';
   
-  let response = `📋 Seu Perfil\n\n`;
-  
-  if (user?.name) {
-    response += `📛 Nome: ${user.name}\n`;
+  if (userInterests.length === 0) {
+    let response = `📋 Seu Perfil\n\n`;
+    response += `Você ainda não tem interesses configurados.\n`;
+    response += `Use /configurar para configurar!`;
+    return await sendLongTelegram(response, chatId);
   }
   
-  if (userInterests.length > 0) {
-    response += `\n📌 Seus interesses:\n`;
+  await sendLongTelegram(`🔍 Buscando notícias e ideias para vídeo sobre seus interesses...`, chatId);
+  
+  const interestQuery = userInterests.join(', ');
+  const newsResults = await searchTopic(interestQuery, 5);
+  
+  if (newsResults.length === 0) {
+    let response = `📋 Seu Perfil\n\n`;
+    response += `📛 Nome: ${user.name}\n\n`;
+    response += `📌 Seus interesses:\n`;
     userInterests.forEach((interest, i) => {
       response += `   ${i + 1}. ${interest}\n`;
     });
-    response += `\n⏰ Horário do digest: ${schedule}\n`;
-    response += `📝 Estilo: ${style}\n`;
-  } else {
-    response += `Você ainda não tem interesses configurados.\n`;
+    response += `\n⏰ Horário: ${schedule}\n`;
+    response += `📝 Estilo: ${style}\n\n`;
+    response += `Não encontrei notícias recentes sobre seus interesses.`;
+    return await sendLongTelegram(response, chatId);
   }
   
-  response += `\nUse /configurar para alterar ou /adicionar para adicionar mais interesses.`;
+  const contentAnalysis = await analyzeContent(newsResults, `notícias sobre ${interestQuery} para criar vídeos`);
+  const newsAnalysis = await analyzeNews(newsResults, interestQuery);
+  
+  let response = `📰 Resumo de notícias sobre ${interestQuery}:\n\n`;
+  response += `${newsAnalysis}\n\n`;
+  response += `🎬 Ideias para seus vídeos:\n\n`;
+  response += `${contentAnalysis}\n\n`;
+  response += `------------------\n`;
+  response += `📋 Seu Perfil\n`;
+  response += `📛 Nome: ${user.name}\n`;
+  response += `📌 Interesses: ${userInterests.join(', ')}\n`;
+  response += `⏰Horário: ${schedule}\n`;
+  response += `📝 Estilo: ${style}`;
   
   return await sendLongTelegram(response, chatId);
 }
