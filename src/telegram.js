@@ -5,6 +5,11 @@ import fetch from 'node-fetch';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 
+function escapeMarkdown(text) {
+  if (!text) return '';
+  return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+}
+
 /**
  * Envia uma mensagem via Telegram
  * @param {string} message - Texto da mensagem
@@ -19,9 +24,11 @@ export async function sendTelegram(message, chatId, botToken) {
     throw new Error('TELEGRAM_CHAT_ID e TELEGRAM_BOT_TOKEN são obrigatórios no .env');
   }
 
+  const escapedMessage = escapeMarkdown(message);
+
   const params = new URLSearchParams({
     chat_id: resolvedChatId,
-    text: message,
+    text: escapedMessage,
     parse_mode: 'Markdown',
   });
 

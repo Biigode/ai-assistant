@@ -83,6 +83,19 @@ TELEGRAM_CHAT_ID=seu_chat_id_aqui
 
 ---
 
+## 5. Configurar Ollama Web Search API
+
+1. Acesse https://ollama.com/api/web_search
+2. Obtenha sua **API Key** gratuita
+3. Cole no `.env`:
+```
+OLLAMA_API_KEY=sua_chave_aqui
+```
+
+---
+
+## 6. Chat Inteligente
+
 ## 5. Configurar seus interesses
 
 ```bash
@@ -97,7 +110,20 @@ O script vai:
 
 ---
 
-## 6. Executar
+## 6. Chat Inteligente
+
+O bot detecta automaticamente quando você precisa de informações da internet:
+
+- **🛒 Produtos**: "qual melhor TV 55 polegadas?" → busca, compara e recomenda
+- **🎬 Conteúdo**: "ideias para vídeo sobre programação" → busca tendências e sugere temas
+- **📰 Notícias**: "últimas notícias sobre IA" → sintetiza e destaca pontos importantes
+- **💬 Geral**: qualquer dúvida → busca e responde
+
+Basta conversar naturalmente com o bot!
+
+---
+
+## 7. Executar
 
 ```bash
 # Iniciar o bot (aguarda o horário agendado)
@@ -109,7 +135,7 @@ npm start -- --now
 
 ---
 
-## Estrutura do Projeto
+## 8. Estrutura do Projeto
 
 ```
 daily-digest/
@@ -118,13 +144,14 @@ daily-digest/
 │   ├── setup.js            # CLI interativo para configurar interesses
 │   ├── digest.js           # Orquestrador: busca → LLM → Telegram
 │   ├── search.js           # Ollama Web Search API
+│   ├── analysis.js         # Análise inteligente de resultados
 │   ├── llm.js              # Ollama: extração de interesses + geração de digest
 │   ├── telegram.js         # Envio via Telegram Bot
 │   ├── telegram-polling.js # Polling do Telegram
 │   ├── telegram-commands.js # Comandos do bot
-│   ├── chat.js             # Chat com o bot via LLM
+│   ├── chat.js             # Chat inteligente com LLM
 │   ├── db.js               # Conexão MongoDB Atlas
-│   └── test-telegram.js    # Script de teste
+│   └── test-telegram.js   # Script de teste
 ├── models/
 │   └── UserPreferences.js  # Schema Mongoose
 ├── .env.example

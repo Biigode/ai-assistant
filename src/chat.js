@@ -1,9 +1,10 @@
 // src/chat.js
-// Chatbot conversacional com Ollama
+// Chatbot conversacional com Ollama e busca inteligente
 
 import { Ollama } from 'ollama';
 import { sendLongTelegram, sendTelegram } from './telegram.js';
 import { searchTopic } from './search.js';
+import { analyzeProduct, analyzeContent, analyzeNews, analyzeGeneral } from './analysis.js';
 
 const ollama = new Ollama({ host: process.env.OLLAMA_BASE_URL || 'http://localhost:11434' });
 const MODEL = process.env.OLLAMA_MODEL || 'llama3.2:1b';
@@ -26,115 +27,117 @@ function buildContext(chatId) {
   return history.map(m => `${m.role}: ${m.content}`).join('\n');
 }
 
-function detectIntent(message) {
-  const lower = message.toLowerCase();
-  
-  if (lower.includes('buscar') || lower.includes('procurar') || lower.includes('pesquisar') ||
-      lower.includes('tv') || lower.includes('notebook') || lower.includes('celular') || 
-      lower.includes('produto') || lower.includes('comprar') || lower.includes('preço')) {
-    return 'search';
+export async function analyzeUserIntent(message) {
+  const prompt = `Analise a mensagem do usuário e determine se precisa buscar informações na internet.
+
+Retorne APENAS um JSON válido (sem texto extra):
+{
+  "needsSearch": true ou false,
+  "searchQuery": "query de busca em português se needsSearch=true, caso contrário vazio",
+  "analysisType": "product" | "content" | "news" | "general"
+}
+
+Regras para analysisType:
+- "product": quando o usuário quer comprar, comparar, avaliar produtos (TV, celular, notebook, câmera, etc)
+- "content": quando o usuário é creator/YouTuber e quer ideias, tendências, notícias sobre nicho
+- "news": quando o usuário quer notícias, atualizações, eventos atuais
+- "general": qualquer outra dúvida que precise de informação atualizada
+
+Mensagem: "${message}"
+
+JSON:`;
+
+  try {
+    const response = await ollama.generate({
+      model: MODEL,
+      prompt,
+      options: { temperature: 0.1, num_predict: 150 }
+    });
+
+    const raw = response.response.trim();
+    const match = raw.match(/\{[\s\S]*\}/);
+    
+    if (!match) {
+      return { needsSearch: false, searchQuery: '', analysisType: 'general' };
+    }
+
+    const result = JSON.parse(match[0]);
+    return {
+      needsSearch: Boolean(result.needsSearch),
+      searchQuery: result.searchQuery || '',
+      analysisType: result.analysisType || 'general'
+    };
+  } catch (err) {
+    console.error('❌ Erro ao analisar intent:', err.message);
+    return { needsSearch: false, searchQuery: '', analysisType: 'general' };
   }
-  
-  if (lower.includes('notícia') || lower.includes('noticias') || lower.includes('novidade')) {
-    return 'news';
-  }
-  
-  return 'chat';
 }
 
 export async function handleChatMessage(chatId, message, name) {
-  const intent = detectIntent(message);
+  console.log(`💬 Chat de ${name} (${chatId}): "${message}"`);
   
-  console.log(`💬 Chat de ${name} (${chatId}): "${message}" [intent: ${intent}]`);
-  
-  if (intent === 'search') {
-    return await handleSearchRequest(chatId, message, name);
+  const intent = await analyzeUserIntent(message);
+  console.log(`   Intent: needsSearch=${intent.needsSearch}, type=${intent.analysisType}, query="${intent.searchQuery}"`);
+
+  if (intent.needsSearch) {
+    return await smartSearch(chatId, message, intent.searchQuery, intent.analysisType, name);
   }
-  
-  if (intent === 'news') {
-    return await handleNewsRequest(chatId, message, name);
-  }
-  
+
   return await handleGeneralChat(chatId, message, name);
 }
 
-async function handleSearchRequest(chatId, message, name) {
-  const topic = message
-    .replace(/buscar|procurar|pesquisar|produto|comprar|preço|sobre|me|a|o|um|uma|de|da|do|em|para/gi, '')
-    .trim();
-  
-  if (!topic) {
-    return await sendTelegram('🔍 O que você quer buscar?', chatId);
-  }
-  
-  await sendLongTelegram(`🔍 Buscando informações sobre "${topic}"...`, chatId);
-  
-  const results = await searchTopic(topic, 3);
-  
-  if (results.length === 0) {
-    return await sendLongTelegram(
-      `😕 Não encontrei informações sobre "${topic}".\n\nTente ser mais específico!`,
-      chatId
-    );
-  }
-  
-  let response = `🔍 *Resultados para "${topic}":*\n\n`;
-  
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    response += `${i + 1}. *${r.title}*\n`;
-    response += `📰 ${r.source}\n`;
-    response += `🔗 ${r.link}\n\n`;
-  }
-  
-  response += `⚠️ *Verifique as fontes!* Acesse os links.\n`;
-  response += `_Responda com o número (1-${results.length}) para mais detalhes_`;
-  
-  addToHistory(chatId, 'user', message);
-  addToHistory(chatId, 'assistant', JSON.stringify(results));
-  
-  if (response.length > MAX_MESSAGE_LENGTH) {
-    response = response.substring(0, MAX_MESSAGE_LENGTH - 100);
-  }
-  
-  return await sendLongTelegram(response, chatId);
-}
+async function smartSearch(chatId, userMessage, query, analysisType, name) {
+  const typeLabels = {
+    product: '🛒 Análise de Produto',
+    content: '🎬 Ideias para Conteúdo',
+    news: '📰 Resumo de Notícias',
+    general: '🔍 Informação'
+  };
 
-async function handleNewsRequest(chatId, message, name) {
-  const topic = message
-    .replace(/notícia|noticias|novidade|últimas|sobre/gi, '')
-    .trim() || 'geral';
-  
-  await sendLongTelegram(`📰 Buscando notícias sobre "${topic}"...`, chatId);
-  
-  const results = await searchTopic(topic, 3);
-  
+  await sendLongTelegram(`${typeLabels[analysisType] || '🔍'} Buscando informações...`, chatId);
+
+  const results = await searchTopic(query, 5);
+
   if (results.length === 0) {
     return await sendLongTelegram(
-      `😕 Não encontrei notícias sobre "${topic}".`,
+      `😕 Não encontrei informações sobre "${query}".\n\nTente ser mais específico!`,
       chatId
     );
   }
-  
-  let response = `📰 *Últimas notícias sobre "${topic}":*\n\n`;
-  
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    response += `${i + 1}. *${r.title}*\n`;
-    response += `📰 ${r.source}\n`;
-    response += `🔗 ${r.link}\n\n`;
+
+  addToHistory(chatId, 'user', userMessage);
+
+  let analysis;
+  switch (analysisType) {
+    case 'product':
+      analysis = await analyzeProduct(results, userMessage);
+      break;
+    case 'content':
+      analysis = await analyzeContent(results, userMessage);
+      break;
+    case 'news':
+      analysis = await analyzeNews(results, userMessage);
+      break;
+    default:
+      analysis = await analyzeGeneral(results, userMessage);
   }
-  
-  response += `⚠️ *Verifique as fontes!* Acesse os links.\n`;
-  response += `_Responda com o número (1-${results.length}) para mais detalhes_`;
-  
-  addToHistory(chatId, 'user', message);
-  addToHistory(chatId, 'assistant', JSON.stringify(results));
-  
+
+  if (!analysis) {
+    return await sendLongTelegram(
+      `⚠️ Encontrei resultados mas não consegui analisar.\n\n` +
+      results.slice(0, 3).map((r, i) => `${i + 1}. ${r.title}\n${r.link}`).join('\n\n'),
+      chatId
+    );
+  }
+
+  const response = `🔍 *Resultado da busca:*\n\n${analysis}\n\n_Verifique as informações nas fontes originais_`;
+
+  addToHistory(chatId, 'assistant', analysis);
+
   if (response.length > MAX_MESSAGE_LENGTH) {
-    response = response.substring(0, MAX_MESSAGE_LENGTH - 100);
+    return await sendLongTelegram(response, chatId);
   }
-  
+
   return await sendLongTelegram(response, chatId);
 }
 
@@ -189,7 +192,8 @@ ${context || 'Nenhuma mensagem anterior'}
 Instruções:
 - Responda de forma clara e amigável
 - Mantenha respostas curtas (máximo 3 parágrafos)
-- Use emoji quando apropriado`;
+- Use emoji quando apropriado
+- Se precisar de informações atualizadas, diga que pode buscar para você`;
 
   try {
     const response = await ollama.generate({
