@@ -20,6 +20,8 @@ export async function sendTelegram(message, chatId, botToken) {
   const resolvedChatId = chatId || process.env.TELEGRAM_CHAT_ID;
   const resolvedToken = botToken || process.env.TELEGRAM_BOT_TOKEN;
 
+  console.log(`📤 [→ ${resolvedChatId}] ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
+
   if (!resolvedChatId || !resolvedToken) {
     throw new Error('TELEGRAM_CHAT_ID e TELEGRAM_BOT_TOKEN são obrigatórios no .env');
   }
@@ -40,7 +42,6 @@ export async function sendTelegram(message, chatId, botToken) {
       throw new Error(`Telegram API retornou: ${body.description}`);
     }
 
-    console.log('✅ Mensagem Telegram enviada com sucesso!');
     return true;
   } catch (err) {
     console.error('❌ Erro ao enviar Telegram:', err.message);
@@ -53,6 +54,9 @@ export async function sendTelegram(message, chatId, botToken) {
  */
 export async function sendLongTelegram(message, chatId, botToken) {
   const MAX_LENGTH = 4000;
+  const resolvedChatId = chatId || process.env.TELEGRAM_CHAT_ID;
+
+  console.log(`📤 [→ ${resolvedChatId}] ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
 
   if (message.length <= MAX_LENGTH) {
     return sendTelegram(message, chatId, botToken);
@@ -71,7 +75,7 @@ export async function sendLongTelegram(message, chatId, botToken) {
   }
   if (current.trim()) parts.push(current.trim());
 
-  console.log(`📤 Enviando em ${parts.length} parte(s)...`);
+  console.log(`📤 Enviando ${parts.length} parte(s) para ${resolvedChatId}...`);
 
   for (let i = 0; i < parts.length; i++) {
     const prefix = parts.length > 1 ? `(${i + 1}/${parts.length})\n` : '';
