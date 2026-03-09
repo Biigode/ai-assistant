@@ -31,14 +31,22 @@ export async function analyzeUserIntent(message) {
   const prompt = `Analise a mensagem do usuário.
 
 Retorne APENAS um JSON válido:
-{"needsSearch": true/false, "searchQuery": "query em português", "analysisType": "product|content|news|general"}
+{"needsSearch": true/false, "searchQuery": "query de busca detalhada", "analysisType": "product|content|news|general"}
 
-Regras:
-- needsSearch=true se a mensagem pede informação, notícia, resumo, comparação
-- news: quando quer notícias, resumo, informações atuais sobre qualquer tema
-- product: comparando produtos para comprar
-- content: para criar vídeos/conteúdo
+Regras para searchQuery:
+- Seja específico! Se o usuário mencionar "tecnologia para video de programador", a query deve ser "tecnologia para programadores fazer videos"
+- Inclua o contexto que o usuário deu
+
+Regras para analysisType:
+- product: quando quer comprar, comparar produtos específicos (TV, celular, notebook)
+- content: quando quer ideias para vídeo, conteúdo, YouTube, blog, post, ou é creator/programador querendo tema para criar conteúdo
+- news: quando quer notícias, resumo, informações atuais
 - general: outras dúvidas
+
+Exemplos:
+- "Quero notícias sobre tecnologia para grave um vídeo sou programador" → {"needsSearch": true, "searchQuery": "tecnologia para programadores tendências 2026", "analysisType": "content"}
+- "qual melhor tv 55 polegadas" → {"needsSearch": true, "searchQuery": "melhor tv 55 polegadas 2026 comparativo", "analysisType": "product"}
+- "últimas notícias de IA" → {"needsSearch": true, "searchQuery": "últimas notícias inteligência artificial", "analysisType": "news"}
 
 Mensagem: "${message}"
 
@@ -48,7 +56,7 @@ JSON:`;
     const response = await ollama.generate({
       model: MODEL,
       prompt,
-      options: { temperature: 0.1, num_predict: 200 }
+      options: { temperature: 0.1, num_predict: 250 }
     });
 
     const raw = response.response.trim();
@@ -102,6 +110,26 @@ function indicatesNoAccess(response) {
   return phrases.some(p => lower.includes(p));
 }
 
+function cleanMarkdown(text) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/^\s*\+\s+/gm, '')
+    .replace(/^#+\s*/gm, '')
+    .trim();
+}
+
+function looksLikeGenericResults(analysis, results) {
+  if (!analysis || results.length === 0) return true;
+  const lower = analysis.toLowerCase();
+  if (lower.includes('opções') && lower.includes('melhor opção') && !results.some(r => 
+    analysis.toLowerCase().includes(r.title.toLowerCase().substring(0, 20))
+  )) {
+    return true;
+  }
+  return false;
+}
+
 async function smartSearch(chatId, userMessage, query, analysisType, name) {
   const typeLabels = {
     product: '🛒 Análise de Produto',
@@ -112,7 +140,7 @@ async function smartSearch(chatId, userMessage, query, analysisType, name) {
 
   await sendLongTelegram(`${typeLabels[analysisType] || '🔍'} Buscando informações...`, chatId);
 
-  const results = await searchTopic(query, 5);
+  let results = await searchTopic(query, 5);
 
   if (results.length === 0) {
     return await sendLongTelegram(
@@ -137,6 +165,30 @@ async function smartSearch(chatId, userMessage, query, analysisType, name) {
     default:
       analysis = await analyzeGeneral(results, userMessage);
   }
+
+  if (looksLikeGenericResults(analysis, results)) {
+    console.log('🔄 Resultados genéricos, tentando novamente com query mais específica...');
+    const retryQuery = query + ' 2026 Brasil';
+    results = await searchTopic(retryQuery, 5);
+    
+    if (results.length > 0) {
+      switch (analysisType) {
+        case 'product':
+          analysis = await analyzeProduct(results, userMessage);
+          break;
+        case 'content':
+          analysis = await analyzeContent(results, userMessage);
+          break;
+        case 'news':
+          analysis = await analyzeNews(results, userMessage);
+          break;
+        default:
+          analysis = await analyzeGeneral(results, userMessage);
+      }
+    }
+  }
+
+  analysis = cleanMarkdown(analysis);
 
   if (!analysis || indicatesNoAccess(analysis)) {
     let fallback = `📰 Resultados para "${userMessage}":\n\n`;
