@@ -28,54 +28,84 @@ function buildContext(chatId) {
 }
 
 export async function analyzeUserIntent(message) {
-  const prompt = `Analise a mensagem do usuário.
+  const lower = message.toLowerCase();
+  
+  const forceSearchPhrases = [
+    'buscar', 'procurar', 'pesquisar', 'busca', 'procure', 'pesquise',
+    'internet', 'na internet', 'web',
+    'notícia', 'noticias', 'novidade', 'atualização',
+    'tendencia', 'tendências', 'bombando', 'em alta',
+    'o que está', 'quais são', 'me passe',
+    'atualizado', 'atualizadas'
+  ];
+  
+  const forceSearch = forceSearchPhrases.some(p => lower.includes(p));
+  
+  const contentPhrases = [
+    'vídeo', 'video', 'youtube', 'criar', 'conteúdo', 'conteudo',
+    'programador', 'developer', 'dev', 'código', 'codigo',
+    'ideia', 'ideias', 'tema', 'temas', 'assunto', 'assuntos'
+  ];
+  
+  const productPhrases = [
+    'comprar', 'melhor', 'preço', 'valor', 'qual', 'produto',
+    'tv', 'celular', 'notebook', 'computador', 'câmera', 'camera',
+    'headphone', 'fone', 'mouse', 'teclado'
+  ];
 
-Retorne APENAS um JSON válido:
-{"needsSearch": true/false, "searchQuery": "query de busca detalhada", "analysisType": "product|content|news|general"}
+  let analysisType = 'general';
+  
+  if (contentPhrases.some(p => lower.includes(p))) {
+    analysisType = 'content';
+  } else if (productPhrases.some(p => lower.includes(p))) {
+    analysisType = 'product';
+  } else if (lower.includes('notícia') || lower.includes('noticia') || lower.includes('novidade')) {
+    analysisType = 'news';
+  }
 
-Regras para searchQuery:
-- Seja específico! Se o usuário mencionar "tecnologia para video de programador", a query deve ser "tecnologia para programadores fazer videos"
-- Inclua o contexto que o usuário deu
+  if (!forceSearch && !analysisType) {
+    return { needsSearch: false, searchQuery: '', analysisType: 'general' };
+  }
 
-Regras para analysisType:
-- product: quando quer comprar, comparar produtos específicos (TV, celular, notebook)
-- content: quando quer ideias para vídeo, conteúdo, YouTube, blog, post, ou é creator/programador querendo tema para criar conteúdo
-- news: quando quer notícias, resumo, informações atuais
-- general: outras dúvidas
+  const prompt = `Gere uma query de busca boa para encontrar informações relevantes.
 
-Exemplos:
-- "Quero notícias sobre tecnologia para grave um vídeo sou programador" → {"needsSearch": true, "searchQuery": "tecnologia para programadores tendências 2026", "analysisType": "content"}
-- "qual melhor tv 55 polegadas" → {"needsSearch": true, "searchQuery": "melhor tv 55 polegadas 2026 comparativo", "analysisType": "product"}
-- "últimas notícias de IA" → {"needsSearch": true, "searchQuery": "últimas notícias inteligência artificial", "analysisType": "news"}
+Regras:
+- searchQuery: query curta (3-6 palavras) em português
+- analysisType: "product" | "content" | "news" | "general"
+- analysisType content = para criar vídeos, ideias para YouTube
+- analysisType news = notícias, tendências atuais
 
 Mensagem: "${message}"
 
-JSON:`;
+Retorne JSON: {"searchQuery": "...", "analysisType": "..."}`;
 
   try {
     const response = await ollama.generate({
       model: MODEL,
       prompt,
-      options: { temperature: 0.1, num_predict: 250 }
+      options: { temperature: 0.1, num_predict: 150 }
     });
 
     const raw = response.response.trim();
     const match = raw.match(/\{[\s\S]*\}/);
     
-    if (!match) {
-      return { needsSearch: false, searchQuery: '', analysisType: 'general' };
+    if (match) {
+      const result = JSON.parse(match[0]);
+      return {
+        needsSearch: true,
+        searchQuery: result.searchQuery || message,
+        analysisType: result.analysisType || analysisType
+      };
     }
-
-    const result = JSON.parse(match[0]);
-    return {
-      needsSearch: Boolean(result.needsSearch),
-      searchQuery: result.searchQuery || '',
-      analysisType: result.analysisType || 'general'
-    };
   } catch (err) {
     console.error('❌ Erro ao analisar intent:', err.message);
-    return { needsSearch: false, searchQuery: '', analysisType: 'general' };
   }
+
+  return {
+    needsSearch: true,
+    searchQuery: message,
+    analysisType
+  };
 }
 
 export async function handleChatMessage(chatId, message, name) {
