@@ -27,7 +27,7 @@ function buildContext(chatId) {
   return history.map(m => `${m.role}: ${m.content}`).join('\n');
 }
 
-export async function analyzeUserIntent(message) {
+export async function analyzeUserIntent(message, previousMessage = null) {
   const lower = message.toLowerCase();
   
   const forceSearchPhrases = [
@@ -67,15 +67,23 @@ export async function analyzeUserIntent(message) {
     return { needsSearch: false, searchQuery: '', analysisType: 'general' };
   }
 
+  let searchQuery = message;
+  
+  if (previousMessage && (lower.includes('buscar') || lower.includes('internet') || lower.includes('procure'))) {
+    searchQuery = previousMessage;
+    console.log(`   Usando mensagem anterior como query: "${searchQuery}"`);
+  }
+
   const prompt = `Gere uma query de busca boa para encontrar informações relevantes.
 
 Regras:
-- searchQuery: query curta (3-6 palavras) em português
+- searchQuery: query curta (3-8 palavras) em português, seja específico
 - analysisType: "product" | "content" | "news" | "general"
-- analysisType content = para criar vídeos, ideias para YouTube
+- analysisType content = para criar vídeos, ideias para YouTube, programadores
 - analysisType news = notícias, tendências atuais
 
-Mensagem: "${message}"
+Mensagem original: "${message}"
+Para buscar: "${searchQuery}"
 
 Retorne JSON: {"searchQuery": "...", "analysisType": "..."}`;
 
@@ -93,7 +101,7 @@ Retorne JSON: {"searchQuery": "...", "analysisType": "..."}`;
       const result = JSON.parse(match[0]);
       return {
         needsSearch: true,
-        searchQuery: result.searchQuery || message,
+        searchQuery: result.searchQuery || searchQuery,
         analysisType: result.analysisType || analysisType
       };
     }
@@ -103,7 +111,7 @@ Retorne JSON: {"searchQuery": "...", "analysisType": "..."}`;
 
   return {
     needsSearch: true,
-    searchQuery: message,
+    searchQuery,
     analysisType
   };
 }
@@ -111,7 +119,12 @@ Retorne JSON: {"searchQuery": "...", "analysisType": "..."}`;
 export async function handleChatMessage(chatId, message, name) {
   console.log(`💬 Chat de ${name} (${chatId}): "${message}"`);
   
-  const intent = await analyzeUserIntent(message);
+  const history = conversationHistory.get(chatId) || [];
+  const previousMessage = history.length > 0 ? history[history.length - 1].content : null;
+  
+  addToHistory(chatId, 'user', message);
+  
+  const intent = await analyzeUserIntent(message, previousMessage);
   console.log(`   Intent: needsSearch=${intent.needsSearch}, type=${intent.analysisType}, query="${intent.searchQuery}"`);
 
   if (intent.needsSearch) {
@@ -178,8 +191,6 @@ async function smartSearch(chatId, userMessage, query, analysisType, name) {
       chatId
     );
   }
-
-  addToHistory(chatId, 'user', userMessage);
 
   let analysis;
   switch (analysisType) {
@@ -282,8 +293,6 @@ export async function handleNewsDetail(chatId, index, name) {
 }
 
 async function handleGeneralChat(chatId, message, name) {
-  addToHistory(chatId, 'user', message);
-  
   const context = buildContext(chatId);
   
   const systemPrompt = `Você é um assistente útil em português brasileiro. 
