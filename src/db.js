@@ -41,5 +41,6 @@ export function getDB() {
   if (!isConnected || !client) {
     throw new Error('DB não conectada');
   }
-  return client.db();
+  const dbName = process.env.MONGODB_DATABASE || 'daily-digest';
+  return client.db(dbName);
 }
