@@ -1,15 +1,173 @@
 services:
+
+  # ── Infraestrutura ──────────────────────────────────────────────────────────
+
+  mongodb:
+    image: mongo:7
+    container_name: ai-assistant-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=ai-assistant
+    networks:
+      - ai-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ai-assistant-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    networks:
+      - ai-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── App principal ───────────────────────────────────────────────────────────
+  # ÚNICO serviço que faz polling do Telegram — não suba telegram-producer junto
+
   app:
     build: .
-    container_name: daily-digest-app
-    ports:
-      - "3000:3000"
+    container_name: ai-assistant-app
     env_file:
       - .env
     environment:
       - NODE_ENV=production
-      - PORT=3000
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=llama3.2:3b
+      - OLLAMA_CLOUD_URL=http://host.docker.internal:11434
+      - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
+    networks:
+      - ai-net
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    command: ["node", "src/index.js"]
+    restart: unless-stopped
+
+  # ── Workers RabbitMQ ────────────────────────────────────────────────────────
+
+  worker-intent:
+    build: .
+    container_name: ai-assistant-worker-intent
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - ai-net
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    command: ["node", "src/workers/intent.js"]
+    restart: unless-stopped
+
+  worker-search:
+    build: .
+    container_name: ai-assistant-worker-search
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - ai-net
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    command: ["node", "src/workers/search.js"]
+    restart: unless-stopped
+
+  worker-response:
+    build: .
+    container_name: ai-assistant-worker-response
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - ai-net
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    command: ["node", "src/workers/response.js"]
+    restart: unless-stopped
+
+  worker-sender:
+    build: .
+    container_name: ai-assistant-worker-sender
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    networks:
+      - ai-net
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    command: ["node", "src/workers/telegram-sender.js"]
+    restart: unless-stopped
+
+networks:
+  ai-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450
+
+volumes:
+  mongo-data:

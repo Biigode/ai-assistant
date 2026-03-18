@@ -1,444 +1,282 @@
 // src/chat.js
-// Chatbot conversacional com Ollama e busca inteligente
+// Chat refatorado com memória persistente e intent classification via LLM
 
-import { Ollama } from 'ollama';
 import { sendLongTelegram, sendTelegram } from './telegram.js';
 import { searchTopic } from './search.js';
 import { analyzeProduct, analyzeContent, analyzeNews, analyzeGeneral } from './analysis.js';
+import { classifyIntent, generateChatResponse, extractSearchQuery } from './llm.js';
+import { addMessage, getHistory, buildContextString } from './memory.js';
+import { runResearchPipeline } from './agents.js';
 
-const ollama = new Ollama({ host: process.env.OLLAMA_BASE_URL || 'http://localhost:11434' });
-const MODEL = process.env.OLLAMA_MODEL || 'llama3.2:1b';
+export async function analyzeUserIntent(message, chatId, userInterests = []) {
+  const lower = message.toLowerCase().trim();
 
-const MAX_MESSAGE_LENGTH = 3500;
-
-const conversationHistory = new Map();
-
-function addToHistory(chatId, role, content) {
-  if (!conversationHistory.has(chatId)) {
-    conversationHistory.set(chatId, []);
-  }
-  const history = conversationHistory.get(chatId);
-  history.push({ role, content });
-  if (history.length > 10) history.shift();
-}
-
-function buildContext(chatId) {
-  const history = conversationHistory.get(chatId) || [];
-  return history.map(m => `${m.role}: ${m.content}`).join('\n');
-}
-
-export async function analyzeUserIntent(message, previousMessage = null, userInterests = []) {
-  const lower = message.toLowerCase();
-  
-  const greetings = ['olá', 'ola', 'oi', 'ei', 'eai', 'hi', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'boa'];
-  const isGreeting = greetings.some(g => lower.trim() === g || lower.startsWith(g + ' ') || lower === g + '!');
-  
-  if (isGreeting) {
-    return { needsSearch: false, searchQuery: '', analysisType: 'greeting' };
-  }
-  
-  const shortMessages = message.trim().length < 3;
-  if (shortMessages) {
-    return { needsSearch: false, searchQuery: '', analysisType: 'general' };
-  }
-  
-  const forceSearchPhrases = [
-    'buscar', 'procurar', 'pesquisar', 'busca', 'procure', 'pesquise',
-    'internet', 'na internet', 'web',
-    'notícia', 'noticias', 'novidade', 'atualização',
-    'tendencia', 'tendências', 'bombando', 'em alta',
-    'o que está', 'quais são', 'me passe',
-    'atualizado', 'atualizadas'
-  ];
-  
-  const forceSearch = forceSearchPhrases.some(p => lower.includes(p));
-  
-  const contentPhrases = [
-    'vídeo', 'video', 'youtube', 'criar', 'conteúdo', 'conteudo',
-    'programador', 'developer', 'dev', 'código', 'codigo',
-    'ideia', 'ideias', 'tema', 'temas', 'assunto', 'assuntos'
-  ];
-  
-  const productPhrases = [
-    'comprar', 'melhor', 'preço', 'valor', 'qual', 'produto',
-    'tv', 'celular', 'notebook', 'computador', 'câmera', 'camera',
-    'headphone', 'fone', 'mouse', 'teclado'
-  ];
-
-  let analysisType = 'general';
-  
-  const profilePhrases = [
-    'meu daily', 'meu digest', 'daily digest',
-    'meu perfil', 'meus interesses', 'minhas noticias',
-    'o que eu', 'quais meus', 'quais as minhas',
-    'sobre mim', 'minha configuracao', 'minha conta'
-  ];
-  
-  if (profilePhrases.some(p => lower.includes(p))) {
-    return { needsSearch: false, searchQuery: '', analysisType: 'profile' };
-  }
-  
-  if (contentPhrases.some(p => lower.includes(p))) {
-    analysisType = 'content';
-  } else if (productPhrases.some(p => lower.includes(p))) {
-    analysisType = 'product';
-  } else if (lower.includes('notícia') || lower.includes('noticia') || lower.includes('novidade')) {
-    analysisType = 'news';
+  // Saudações — sem LLM
+  const greetings = ['olá','ola','oi','ei','eai','hi','hello','bom dia','boa tarde','boa noite'];
+  if (greetings.some(g => lower === g || lower.startsWith(g + ' ') || lower === g + '!')) {
+    return { needsSearch: false, analysisType: 'greeting', searchQuery: '' };
   }
 
-  if (!forceSearch && !analysisType) {
-    return { needsSearch: false, searchQuery: '', analysisType: 'general' };
+  // Perfil — sem LLM
+  const profileTerms = ['meu perfil','meus interesses','meu digest','sobre mim','minha conta'];
+  if (profileTerms.some(p => lower.includes(p))) {
+    return { needsSearch: false, analysisType: 'profile', searchQuery: '' };
   }
 
-  let searchQuery = message;
-  
-  if (previousMessage && (lower.includes('buscar') || lower.includes('internet') || lower.includes('procure'))) {
-    searchQuery = previousMessage;
-    console.log(`   Usando mensagem anterior como query: "${searchQuery}"`);
+  // Pesquisa profunda (pipeline de agentes)
+  const researchTerms = ['pesquisa profunda','investigar','investigação','briefing','roteiro','vídeo sobre','video sobre','analisar fundo'];
+  if (researchTerms.some(p => lower.includes(p))) {
+    return { needsSearch: true, analysisType: 'research', searchQuery: message };
   }
-  
-  const interestsContext = userInterests.length > 0 ? `Interesses do usuário: ${userInterests.join(', ')}` : '';
-
-  const prompt = `Gere uma query de busca.curta e específica (máximo 6 palavras).
-IMPORTANTE: Se a mensagem for sobre notícias em geral ou algo vago, use os interesses do usuário para fazer a busca.
-
-${interestsContext}
-
-Mensagem: "${searchQuery}"
-
-Retorne JSON com:
-- searchQuery: query em português, curta
-- analysisType: "product" | "content" | "news" | "general"
-
-Exemplos:
-- "meu youtube sobre tecnologia" → {"searchQuery": "tecnologia tendências 2026", "analysisType": "content"}
-- "qual melhor notebook para programador" → {"searchQuery": "melhor notebook programador 2026", "analysisType": "product"}
-- "notícias" (usuário tem interesses em tecnologia) → {"searchQuery": "tecnologia IA inovação 2026", "analysisType": "news"}
-
-JSON:`;
 
   try {
-    const response = await ollama.generate({
-      model: MODEL,
-      prompt,
-      options: { temperature: 0.1, num_predict: 100 }
-    });
+    const intent = await classifyIntent(message);
+    if (intent === 'chat') return { needsSearch: false, analysisType: 'chat', searchQuery: '' };
 
-    const raw = response.response.trim();
-    const match = raw.match(/\{[\s\S]*\}/);
-    
-    if (match) {
-      const result = JSON.parse(match[0]);
-      return {
-        needsSearch: true,
-        searchQuery: result.searchQuery || searchQuery,
-        analysisType: result.analysisType || analysisType
-      };
-    }
-  } catch (err) {
-    console.error('❌ Erro ao analisar intent:', err.message);
+    const analysisType = detectAnalysisType(lower);
+
+    // Sempre extrai uma query curta e limpa — nunca envia a mensagem crua para o DuckDuckGo
+    const searchQuery = await buildSearchQuery(message, userInterests, analysisType);
+
+    return { needsSearch: true, analysisType, searchQuery };
+  } catch {
+    return { needsSearch: false, analysisType: 'chat', searchQuery: '' };
+  }
+}
+
+function detectAnalysisType(lower) {
+  if (['vídeo','video','youtube','conteúdo','conteudo','ideia','ideias'].some(p => lower.includes(p))) return 'content';
+  if (['comprar','melhor','preço','produto','notebook','celular','tv','mouse','teclado'].some(p => lower.includes(p))) return 'product';
+  if (['notícia','noticias','novidade','resumo','últimas','bombando','em alta'].some(p => lower.includes(p))) return 'news';
+  return 'general';
+}
+
+// Extrai uma query curta e específica da mensagem do usuário
+// Prioridade: interesses do usuário > extração via LLM > fallback com primeiras palavras
+async function buildSearchQuery(message, userInterests, analysisType) {
+  // Para notícias: usa os interesses cadastrados como query base
+  if (analysisType === 'news' && userInterests.length > 0) {
+    // Combina interesses em query de busca
+    const interestQuery = userInterests.slice(0, 3).join(' ');
+    console.log(`   📌 Usando interesses do usuário como query: "${interestQuery}"`);
+    return interestQuery;
   }
 
-  return {
-    needsSearch: true,
-    searchQuery,
-    analysisType
-  };
+  // Para mensagens curtas, usa diretamente
+  if (message.trim().length <= 40) return message.trim();
+
+  // Para mensagens longas: extrai query via LLM
+  try {
+    const query = await extractSearchQuery(message);
+    console.log(`   🔍 Query extraída pelo LLM: "${query}"`);
+    return query;
+  } catch {
+    // Fallback: pega as primeiras 5 palavras relevantes
+    const words = message.split(' ').filter(w => w.length > 3).slice(0, 5);
+    return words.join(' ');
+  }
 }
+
+// ─── Message Handler ──────────────────────────────────────────────────────────
 
 export async function handleChatMessage(chatId, message, name) {
   console.log(`💬 Chat de ${name} (${chatId}): "${message}"`);
-  
-  const history = conversationHistory.get(chatId) || [];
-  const previousMessage = history.length > 0 ? history[history.length - 1].content : null;
-  
-  addToHistory(chatId, 'user', message);
-  
+  await addMessage(chatId, 'user', message);
+
   const { findUserByChatId } = await import('../models/UserPreferences.js');
   const user = await findUserByChatId(chatId);
   const userInterests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
-  
-  const intent = await analyzeUserIntent(message, previousMessage, userInterests);
+
+  const intent = await analyzeUserIntent(message, chatId, userInterests);
   console.log(`   Intent: needsSearch=${intent.needsSearch}, type=${intent.analysisType}, query="${intent.searchQuery}"`);
-  
-  if (intent.analysisType === 'greeting') {
-    return await handleGreeting(chatId, name, user);
+
+  switch (intent.analysisType) {
+    case 'greeting': return handleGreeting(chatId, name, user);
+    case 'profile':  return handleProfileQuery(chatId, name, user);
+    case 'research': return handleResearch(chatId, message, name);
   }
-  
-  if (intent.analysisType === 'profile') {
-    return await handleProfileQuery(chatId, name, user);
-  }
-  
+
   if (intent.needsSearch) {
-    return await smartSearch(chatId, message, intent.searchQuery, intent.analysisType, name, userInterests);
+    return smartSearch(chatId, message, intent.searchQuery, intent.analysisType);
   }
 
-  return await handleGeneralChat(chatId, message, name);
+  return handleGeneralChat(chatId, message, name);
 }
 
-function indicatesNoAccess(response) {
-  const lower = response.toLowerCase();
-  const phrases = [
-    'não tenho acesso',
-    'não posso acessar',
-    'não tenho informação',
-    'não tenho dados',
-    'sem acesso',
-    'informações em tempo real',
-    'atualizar meus dados',
-    'base de dados',
-    'não foi possível encontrar',
-    'não encontrei',
-    'pesquise em',
-    'visite o site'
-  ];
-  return phrases.some(p => lower.includes(p));
+// ─── Pipeline de pesquisa profunda (agentes) ──────────────────────────────────
+
+async function handleResearch(chatId, message, name) {
+  await sendLongTelegram(
+    `🔬 Iniciando investigação profunda...\nIsso pode levar 1-2 minutos.\n\nVou buscar múltiplas fontes, cruzar informações e gerar um briefing completo para seu vídeo!`,
+    chatId
+  );
+
+  const topic = message
+    .replace(/pesquisa profunda|investigar|investigação|briefing|roteiro|vídeo sobre|video sobre|analisar fundo/gi, '')
+    .trim() || message;
+
+  try {
+    const result = await runResearchPipeline(topic);
+    await addMessage(chatId, 'assistant', result.briefing);
+    return sendLongTelegram(result.briefing, chatId);
+  } catch (err) {
+    return sendLongTelegram(`❌ Erro na investigação: ${err.message}\n\nTente novamente com /buscar ${topic}`, chatId);
+  }
 }
 
-function cleanMarkdown(text) {
+// ─── Busca simples ────────────────────────────────────────────────────────────
+
+async function smartSearch(chatId, userMessage, query, analysisType) {
+  const labels = {
+    product: '🛒 Buscando produto...',
+    content: '🎬 Buscando ideias de conteúdo...',
+    news:    '📰 Buscando notícias...',
+    general: '🔍 Buscando...'
+  };
+  await sendLongTelegram(labels[analysisType] || '🔍 Buscando...', chatId);
+
+  const results = await searchTopic(query, 5);
+
+  if (results.length === 0) {
+    // Tenta uma segunda vez com query ainda mais simples
+    const fallbackQuery = query.split(' ').slice(0, 3).join(' ');
+    console.log(`   ↩ Tentando query simplificada: "${fallbackQuery}"`);
+    const retryResults = await searchTopic(fallbackQuery, 5);
+
+    if (retryResults.length === 0) {
+      return sendLongTelegram(
+        `😕 Não encontrei resultados para "${query}".\n\nTente usar termos mais simples, como:\n"notícias inteligência artificial" ou "novidades programação"`,
+        chatId
+      );
+    }
+    return processSearchResults(chatId, userMessage, retryResults, analysisType);
+  }
+
+  return processSearchResults(chatId, userMessage, results, analysisType);
+}
+
+async function processSearchResults(chatId, userMessage, results, analysisType) {
+  if (analysisType === 'news') return showNewsList(chatId, results, userMessage);
+
+  let analysis;
+  switch (analysisType) {
+    case 'product': analysis = await analyzeProduct(results, userMessage); break;
+    case 'content': analysis = await analyzeContent(results, userMessage); break;
+    default:        analysis = await analyzeGeneral(results, userMessage);
+  }
+
+  analysis = cleanText(analysis);
+  if (!analysis || indicatesNoAccess(analysis)) analysis = buildFallbackList(results, userMessage);
+
+  await addMessage(chatId, 'assistant', analysis);
+  return sendLongTelegram(`🔍 Resultado:\n\n${analysis}\n\nVerifique as fontes originais.`, chatId);
+}
+
+async function showNewsList(chatId, results, query) {
+  let msg = `📰 Notícias encontradas\n\n`;
+  results.forEach((r, i) => {
+    msg += `${i + 1}. ${r.title}\n   📰 ${r.source}\n\n`;
+  });
+  msg += `Digite o número (1-${results.length}) para ler o resumo.\n`;
+  msg += `Ou: "pesquisa profunda [tema]" para briefing completo de vídeo!`;
+
+  await addMessage(chatId, 'assistant', JSON.stringify(results));
+  return sendLongTelegram(msg, chatId);
+}
+
+export async function handleNewsDetail(chatId, index, name) {
+  const history = await getHistory(chatId);
+  let lastResults = null;
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === 'assistant') {
+      try {
+        const parsed = JSON.parse(history[i].content);
+        if (Array.isArray(parsed)) { lastResults = parsed; break; }
+      } catch { continue; }
+    }
+  }
+
+  if (!lastResults) return null;
+
+  const idx = parseInt(index) - 1;
+  if (idx < 0 || idx >= lastResults.length) {
+    await sendTelegram(`❌ Número inválido. Escolha entre 1 e ${lastResults.length}.`, chatId);
+    return true;
+  }
+
+  const r = lastResults[idx];
+  await sendLongTelegram(
+    `📰 ${r.title}\n\n📰 Fonte: ${r.source}\n🔗 ${r.link}\n\n📝 Resumo:\n${r.snippet}\n\n⚠️ Verifique na fonte original!`,
+    chatId
+  );
+  return true;
+}
+
+// ─── Chat geral ───────────────────────────────────────────────────────────────
+
+async function handleGeneralChat(chatId, message, name) {
+  const context = await buildContextString(chatId);
+  const reply = await generateChatResponse(message, null, { name, context });
+  await addMessage(chatId, 'assistant', reply);
+  return sendLongTelegram(reply, chatId);
+}
+
+async function handleGreeting(chatId, name, user) {
+  const interests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
+  let msg = `Olá ${name}! 👋\n\n`;
+
+  if (interests.length > 0) {
+    msg += `Seus interesses: ${interests.join(', ')}\n\n`;
+    msg += `O que posso fazer:\n`;
+    msg += `📰 Notícias → "últimas notícias de IA"\n`;
+    msg += `🔬 Briefing para vídeo → "pesquisa profunda [tema]"\n`;
+    msg += `🛒 Produtos → "melhor notebook para programar"\n`;
+    msg += `⚙️ Ajustes → /perfil ou /configurar`;
+  } else {
+    msg += `Bem-vindo ao Daily Digest Bot!\n\n`;
+    msg += `📰 Resumo diário de notícias\n`;
+    msg += `🔬 Briefings completos para vídeos\n`;
+    msg += `🔍 Buscas inteligentes\n\n`;
+    msg += `Configure seus interesses: /configurar`;
+  }
+
+  return sendLongTelegram(msg, chatId);
+}
+
+async function handleProfileQuery(chatId, name, user) {
+  const interests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
+
+  if (interests.length === 0) {
+    return sendLongTelegram(`📋 Sem interesses configurados ainda.\nUse /configurar para começar!`, chatId);
+  }
+
+  const settings = user?.digestSettings || {};
+  const msg = `📋 Seu Perfil\n\n📛 Nome: ${user.name}\n📌 Interesses: ${interests.join(', ')}\n⏰ Horário: ${settings.cronSchedule || '08:00'}\n📝 Estilo: ${settings.summaryStyle || 'bullet-points'}`;
+  return sendLongTelegram(msg, chatId);
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function cleanText(text) {
+  if (!text) return '';
   return text
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/^\s*\+\s+/gm, '')
     .replace(/^#+\s*/gm, '')
     .trim();
 }
 
-function looksLikeGenericResults(analysis, results) {
-  if (!analysis || results.length === 0) return true;
-  const lower = analysis.toLowerCase();
-  if (lower.includes('opções') && lower.includes('melhor opção') && !results.some(r => 
-    analysis.toLowerCase().includes(r.title.toLowerCase().substring(0, 20))
-  )) {
-    return true;
-  }
-  return false;
-}
-
-async function smartSearch(chatId, userMessage, query, analysisType, name, userInterests = []) {
-  const typeLabels = {
-    product: '🛒 Análise de Produto',
-    content: '🎬 Ideias para Conteúdo',
-    news: '📰 Resumo de Notícias',
-    general: '🔍 Informação'
-  };
-
-  await sendLongTelegram(`${typeLabels[analysisType] || '🔍'} Buscando...`, chatId);
-
-  let results = await searchTopic(query, 5);
-
-  if (results.length === 0) {
-    return await sendLongTelegram(
-      `😕 Não encontrei informações sobre "${query}".\n\nTente ser mais específico!`,
-      chatId
-    );
-  }
-
-  let analysis;
-  switch (analysisType) {
-    case 'product':
-      analysis = await analyzeProduct(results, userMessage);
-      break;
-    case 'content':
-      analysis = await analyzeContent(results, userMessage);
-      break;
-    case 'news':
-      analysis = await analyzeNews(results, userMessage);
-      break;
-    default:
-      analysis = await analyzeGeneral(results, userMessage);
-  }
-
-  if (looksLikeGenericResults(analysis, results)) {
-    console.log('🔄 Resultados genéricos, tentando novamente com query mais específica...');
-    const retryQuery = query + ' 2026 Brasil';
-    results = await searchTopic(retryQuery, 5);
-    
-    if (results.length > 0) {
-      switch (analysisType) {
-        case 'product':
-          analysis = await analyzeProduct(results, userMessage);
-          break;
-        case 'content':
-          analysis = await analyzeContent(results, userMessage);
-          break;
-        case 'news':
-          analysis = await analyzeNews(results, userMessage);
-          break;
-        default:
-          analysis = await analyzeGeneral(results, userMessage);
-      }
-    }
-  }
-
-  analysis = cleanMarkdown(analysis);
-
-  if (!analysis || indicatesNoAccess(analysis)) {
-    let fallback = `📰 Resultados para "${userMessage}":\n\n`;
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      fallback += `${i + 1}. ${r.title}\n`;
-      fallback += `   Fonte: ${r.source}\n`;
-      fallback += `   ${r.link}\n\n`;
-    }
-    fallback += `Verifique as informações nos links acima.`;
-    analysis = fallback;
-  }
-
-  const response = `🔍 Resultado da busca:\n\n${analysis}\n\nVerifique as informacoes nas fontes originais`;
-
-  addToHistory(chatId, 'assistant', analysis);
-
-  if (response.length > MAX_MESSAGE_LENGTH) {
-    return await sendLongTelegram(response, chatId);
-  }
-
-  return await sendLongTelegram(response, chatId);
-}
-
-export async function handleNewsDetail(chatId, index, name) {
-  const history = conversationHistory.get(chatId);
-  if (!history) return null;
-  
-  let lastResults = null;
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].role === 'assistant') {
-      try {
-        lastResults = JSON.parse(history[i].content);
-        if (Array.isArray(lastResults)) break;
-      } catch {
-        continue;
-      }
-    }
-  }
-  
-  if (!lastResults || !Array.isArray(lastResults)) return null;
-  
-  const itemIndex = parseInt(index) - 1;
-  if (itemIndex < 0 || itemIndex >= lastResults.length) {
-    await sendTelegram(`❌ Número inválido. Escolha entre 1 e ${lastResults.length}.`, chatId);
-    return true;
-  }
-  
-  const r = lastResults[itemIndex];
-  
-  await sendLongTelegram(
-    `📰 ${r.title}\n\n` +
-    `📰 Fonte: ${r.source}\n` +
-    `🔗 ${r.link}\n\n` +
-    `📝 Resumo:\n${r.snippet}\n\n` +
-    `⚠️ Verifique a noticia na fonte original!`,
-    chatId
+function indicatesNoAccess(text) {
+  return ['não tenho acesso','informações em tempo real','pesquise em'].some(p =>
+    text.toLowerCase().includes(p)
   );
-  
-  return true;
 }
 
-async function handleProfileQuery(chatId, name, user) {
-  const userInterests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
-  const settings = user?.digestSettings || {};
-  const schedule = settings.cronSchedule || '08:00';
-  const style = settings.summaryStyle || 'bullet-points';
-  
-  if (userInterests.length === 0) {
-    let response = `📋 Seu Perfil\n\n`;
-    response += `Você ainda não tem interesses configurados.\n`;
-    response += `Use /configurar para configurar!`;
-    return await sendLongTelegram(response, chatId);
-  }
-  
-  await sendLongTelegram(`🔍 Buscando notícias e ideias para vídeo sobre seus interesses...`, chatId);
-  
-  const interestQuery = userInterests.join(', ');
-  const newsResults = await searchTopic(interestQuery, 5);
-  
-  if (newsResults.length === 0) {
-    let response = `📋 Seu Perfil\n\n`;
-    response += `📛 Nome: ${user.name}\n\n`;
-    response += `📌 Seus interesses:\n`;
-    userInterests.forEach((interest, i) => {
-      response += `   ${i + 1}. ${interest}\n`;
-    });
-    response += `\n⏰ Horário: ${schedule}\n`;
-    response += `📝 Estilo: ${style}\n\n`;
-    response += `Não encontrei notícias recentes sobre seus interesses.`;
-    return await sendLongTelegram(response, chatId);
-  }
-  
-  const contentAnalysis = await analyzeContent(newsResults, `notícias sobre ${interestQuery} para criar vídeos`);
-  const newsAnalysis = await analyzeNews(newsResults, interestQuery);
-  
-  let response = `📰 Resumo de notícias sobre ${interestQuery}:\n\n`;
-  response += `${newsAnalysis}\n\n`;
-  response += `🎬 Ideias para seus vídeos:\n\n`;
-  response += `${contentAnalysis}\n\n`;
-  response += `------------------\n`;
-  response += `📋 Seu Perfil\n`;
-  response += `📛 Nome: ${user.name}\n`;
-  response += `📌 Interesses: ${userInterests.join(', ')}\n`;
-  response += `⏰Horário: ${schedule}\n`;
-  response += `📝 Estilo: ${style}`;
-  
-  return await sendLongTelegram(response, chatId);
-}
-
-async function handleGreeting(chatId, name, user) {
-  const userInterests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
-  const hasProfile = user?.name && user?.interests?.some(i => i.active);
-  
-  let response = `Olá ${name}! 👋\n\n`;
-  
-  if (hasProfile) {
-    response += `Seus interesses: ${userInterests.join(', ')}\n\n`;
-    response += `Posso te ajudar a buscar notícias, ideias para vídeos, ou comparar produtos.\n`;
-    response += `É só me mandar uma mensagem!\n\n`;
-    response += `Use /perfil para ver seus interesses.`;
-  } else {
-    response += `Bem-vindo ao Daily Digest Bot!\n\n`;
-    response += `Eu te ajudo a:\n`;
-    response += `📰 Receber um resumo diário de notícias\n`;
-    response += `🔍 Buscar informações na internet\n`;
-    response += `🎬 Gerar ideias para seus vídeos\n`;
-    response += `🛒 Comparar produtos\n\n`;
-    response += `Para começar, configure seus interesses com:\n`;
-    response += `/configurar\n\n`;
-    response += `Ou use /help para ver todos os comandos.`;
-  }
-  
-  return await sendLongTelegram(response, chatId);
-}
-
-async function handleGeneralChat(chatId, message, name) {
-  const context = buildContext(chatId);
-  
-  const systemPrompt = `Você é um assistente útil em português brasileiro. 
-O usuário ${name} está conversando com você.
-Histórico recente:
-${context || 'Nenhuma mensagem anterior'}
-
-Instruções:
-- Responda de forma clara e amigável
-- Mantenha respostas curtas (máximo 3 parágrafos)
-- Use emoji quando apropriado
-- Se precisar de informações atualizadas, diga que pode buscar para você`;
-
-  try {
-    const response = await ollama.generate({
-      model: MODEL,
-      prompt: `${systemPrompt}\n\nUsuário: ${message}\nAssistente:`,
-      options: { temperature: 0.7, num_predict: 400 }
-    });
-
-    const reply = response.response.trim();
-    
-    addToHistory(chatId, 'assistant', reply);
-    
-    return await sendLongTelegram(reply, chatId);
-  } catch (err) {
-    console.error('❌ Erro no chat Ollama:', err.message);
-    return await sendLongTelegram(
-      '😕 Desculpe, estou com problemas técnicos.',
-      chatId
-    );
-  }
+function buildFallbackList(results, query) {
+  let msg = `📰 Resultados encontrados:\n\n`;
+  results.forEach((r, i) => {
+    msg += `${i+1}. ${r.title}\n   📰 ${r.source}\n   🔗 ${r.link}\n\n`;
+  });
+  return msg;
 }

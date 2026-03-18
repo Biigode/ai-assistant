@@ -14,6 +14,15 @@ export async function handleCommand(chatId, command, botToken) {
     case '/start':
       return await handleStart(chatId, user, botToken);
       
+    case '/menu':
+      return await handleMenu(chatId, user, botToken);
+      
+    case '/noticias':
+      return await handleNoticias(chatId, user, botToken);
+      
+    case '/buscar':
+      return await handleBuscar(chatId, user, botToken);
+      
     case '/interesses':
     case '/interests':
       return await handleInterests(chatId, user, botToken);
@@ -69,6 +78,92 @@ async function handleStart(chatId, user, botToken) {
     chatId,
     botToken
   );
+}
+
+async function handleMenu(chatId, user, botToken) {
+  const interests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
+  
+  let message = `📋 *MENU PRINCIPAL*\n\n`;
+  message += `👤 *Seu Perfil*\n`;
+  message += `   Nome: ${user?.name || 'Não configurado'}\n`;
+  message += `   Interesses: ${interests.length > 0 ? interests.join(', ') : 'Nenhum'}\n\n`;
+  
+  message += `📰 *Notícias*\n`;
+  message += `   /noticias - Ver notícias dos seus interesses\n`;
+  message += `   /buscar [tema] - Buscar notícias específicas\n\n`;
+  
+  message += `⚙️ *Configuração*\n`;
+  message += `   /perfil - Ver perfil completo\n`;
+  message += `   /configurar - Configurar interesses\n`;
+  message += `   /adicionar - Adicionar interesse\n`;
+  message += `   /remover - Remover interesse\n`;
+  message += `   /horario - Alterar horário do digest\n\n`;
+  
+  message += `💬 *Conversa Livre*\n`;
+  message += `   Mande uma mensagem sobre qualquer tema!\n`;
+  message += `   Ex: "notícias de tecnologia", "melhor notebook"`;
+
+  return await sendLongTelegram(message, chatId, botToken);
+}
+
+async function handleNoticias(chatId, user, botToken) {
+  const interests = user?.interests?.filter(i => i.active).map(i => i.topic) || [];
+  
+  if (interests.length === 0) {
+    return await sendTelegram(
+      `⚠️ Você não tem interesses configurados!\n\nUse /configurar para adicionar seus interesses.`,
+      chatId,
+      botToken
+    );
+  }
+
+  const query = interests.join(', ');
+  
+  const { searchTopic } = await import('./search.js');
+  const { analyzeNews } = await import('./analysis.js');
+  const { sendLongTelegram } = await import('./telegram.js');
+  
+  await sendLongTelegram(`📰 Buscando notícias sobre: ${query}...`, chatId, botToken);
+  
+  const results = await searchTopic(query, 5);
+  
+  if (results.length === 0) {
+    return await sendLongTelegram(
+      `😕 Não encontrei notícias sobre "${query}".\n\nTente adicionar outros interesses com /adicionar`,
+      chatId,
+      botToken
+    );
+  }
+
+  let message = `📰 *Notícias sobre "${query}"*\n\n`;
+  message += `Escolha uma notícia para ler o resumo:\n\n`;
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    message += `${i + 1}. ${r.title}\n`;
+    message += `   📰 ${r.source}\n\n`;
+  }
+
+  message += `\n📌 *Comandos:*\n`;
+  message += `• Digite o número (1-${results.length}) para ler o resumo\n`;
+  message += `• /buscar [tema] - buscar notícias específicas\n`;
+  message += `• /menu - voltar ao menu`;
+
+  const newsData = JSON.stringify(results);
+  const { addToHistory } = await import('./chat.js');
+  addToHistory(chatId, 'assistant', newsData);
+
+  return await sendLongTelegram(message, chatId, botToken);
+}
+
+async function handleBuscar(chatId, user, botToken) {
+  await sendTelegram(
+    `🔍 *Buscar Notícias*\n\nDigite o tema que deseja buscar.\n\nEx: "tecnologia", "esportes", "receitas"`,
+    chatId,
+    botToken
+  );
+  
+  return { step: 'buscar', chatId };
 }
 
 async function handleHelp(chatId, botToken) {
@@ -207,6 +302,49 @@ async function handleStyle(chatId, user, botToken) {
 
 export async function handleInteractiveResponse(chatId, response, user, botToken, currentStep) {
   const step = currentStep?.step;
+  
+  if (step === 'buscar') {
+    const query = response.trim();
+    
+    if (query.length < 2) {
+      await sendTelegram('❌ Tema muito curto. Digite um tema para buscar.', chatId, botToken);
+      return { step: 'buscar', chatId };
+    }
+
+    const { searchTopic } = await import('./search.js');
+    const { addToHistory } = await import('./chat.js');
+    
+    await sendLongTelegram(`🔍 Buscando notícias sobre: "${query}"...`, chatId, botToken);
+    
+    const results = await searchTopic(query, 5);
+    
+    if (results.length === 0) {
+      return await sendLongTelegram(
+        `😕 Não encontrei notícias sobre "${query}".\n\nTente outro tema!`,
+        chatId,
+        botToken
+      );
+    }
+
+    let message = `📰 *Notícias sobre "${query}"*\n\n`;
+    message += `Escolha uma notícia para ler o resumo:\n\n`;
+
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      message += `${i + 1}. ${r.title}\n`;
+      message += `   📰 ${r.source}\n\n`;
+    }
+
+    message += `\n📌 *Comandos:*\n`;
+    message += `• Digite o número (1-${results.length}) para ler o resumo\n`;
+    message += `• /buscar [tema] - buscar novas notícias\n`;
+    message += `• /menu - voltar ao menu`;
+
+    const newsData = JSON.stringify(results);
+    addToHistory(chatId, 'assistant', newsData);
+
+    return await sendLongTelegram(message, chatId, botToken);
+  }
   
   if (step === 'name') {
     const name = response;

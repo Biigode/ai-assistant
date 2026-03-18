@@ -1,17 +1,19 @@
-# 📰 Daily Digest Bot
+# 📰 AI Assistant Bot
 
-Receba um resumo diário personalizado de notícias no Telegram, gerado com IA local (Ollama) e buscado via Ollama Web Search.
+Assistente de IA para Telegram com resumo diário de notícias, chat inteligente e agentes de pesquisa.
 
 ## Stack
 
 | Camada | Tecnologia |
 |---|---|
 | Linguagem | Node.js (ES Modules) |
+| Mensageria | RabbitMQ |
 | Busca | Ollama Web Search API |
-| LLM Local | Ollama (`llama3.2:1b`) |
-| Banco de dados | MongoDB Atlas (NoSQL) |
+| LLM | Ollama (local + cloud) |
+| Banco de dados | MongoDB |
 | Mensagens | Telegram Bot |
 | Agendamento | node-cron |
+| Container | Docker Compose |
 
 ---
 
@@ -19,168 +21,222 @@ Receba um resumo diário personalizado de notícias no Telegram, gerado com IA l
 
 - Node.js 18+
 - [Ollama](https://ollama.com/) instalado e rodando localmente
-- Conta gratuita no [MongoDB Atlas](https://www.mongodb.com/atlas)
+- Docker e Docker Compose
 - Conta no Telegram
 
 ---
 
-## 1. Instalação
+## Instalação
 
 ```bash
 git clone <repo>
-cd daily-digest
+cd ai-assistant
 npm install
 cp .env.example .env
 ```
 
 ---
 
-## 2. Configurar o Ollama (LLM + Busca Local)
+## Configuração
+
+### 1. Ollama (LLM Local)
 
 ```bash
 # Instalar Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Baixar modelo pequeno e eficiente (apenas ~1GB)
-ollama pull llama3.2:1b
+# Baixar modelo
+ollama pull qwen2.5:3b
 
-# Alternativas ainda menores:
-# ollama pull qwen2.5:1.5b   (~1GB)
-# ollama pull phi3.5:mini    (~2.2GB)
-
-# Iniciar o servidor Ollama
+# Iniciar servidor
 ollama serve
 ```
 
----
+### 2. Docker Compose (MongoDB + RabbitMQ)
 
-## 3. Configurar MongoDB Atlas
-
-1. Crie conta gratuita em https://www.mongodb.com/atlas
-2. Crie um cluster **M0 Free Tier**
-3. Em **Database Access**: crie usuário com senha
-4. Em **Network Access**: adicione `0.0.0.0/0` (acesso de qualquer IP)
-5. Clique em **Connect → Drivers** e copie a URI
-6. Cole no `.env`:
-```
-MONGODB_URI=mongodb+srv://usuario:senha@cluster.mongodb.net/daily-digest
+```bash
+docker-compose up -d mongodb rabbitmq
 ```
 
----
+- **MongoDB**: porta 27017
+- **RabbitMQ**: porta 5672 (management: http://localhost:15672)
 
-## 4. Configurar Telegram Bot
+### 3. Telegram Bot
 
-1. No Telegram, inicie uma conversa com [@BotFather](https://t.me/BotFather)
-2. Use o comando `/newbot` para criar um novo bot
-3. Siga as instruções e copie o **Bot Token**
-4. Inicie uma conversa com seu novo bot
-5. Descubra seu **Chat ID** enviando uma mensagem para [@userinfobot](https://t.me/userinfobot)
-6. Cole no `.env`:
+1. Fale com [@BotFather](https://t.me/BotFather)
+2. Use `/newbot` para criar o bot
+3. Copie o **Bot Token**
+4. Cole no `.env`:
 ```
-TELEGRAM_BOT_TOKEN=seu_bot_token_aqui
-TELEGRAM_CHAT_ID=seu_chat_id_aqui
+TELEGRAM_BOT_TOKEN=seu_token_aqui
 ```
 
----
+### 4. Ollama Cloud (Opcional)
 
-## 5. Configurar Ollama Web Search API
+Para tarefas de raciocínio profundo:
 
-1. Acesse https://ollama.com/api/web_search
-2. Obtenha sua **API Key** gratuita
-3. Cole no `.env`:
+1. Crie conta em https://ollama.com
+2. Gere uma API Key em **Settings → API Keys**
+3. Adicione no `.env`:
 ```
 OLLAMA_API_KEY=sua_chave_aqui
 ```
 
----
+O sistema escolhe automaticamente:
+- **Modelos cloud**: para raciocínio profundo (agentes, análise)
+- **Modelos locais**: fallback quando offline
 
-## 6. Chat Inteligente
-
-## 5. Configurar seus interesses
+### 5. Configurar Interesses
 
 ```bash
 npm run setup
 ```
 
-O script vai:
-1. Perguntar seu número e nome
-2. Deixar você descrever seus interesses livremente em português
-3. Usar o LLM local para extrair os tópicos
-4. Confirmar os tópicos e salvar no MongoDB Atlas
+O script pergunta seus interesses e salva no MongoDB.
 
 ---
 
-## 6. Chat Inteligente
+## Executar
 
-O bot detecta automaticamente quando você precisa de informações da internet:
-
-- **🛒 Produtos**: "qual melhor TV 55 polegadas?" → busca, compara e recomenda
-- **🎬 Conteúdo**: "ideias para vídeo sobre programação" → busca tendências e sugere temas
-- **📰 Notícias**: "últimas notícias sobre IA" → sintetiza e destaca pontos importantes
-- **💬 Geral**: qualquer dúvida → busca e responde
-
-Basta conversar naturalmente com o bot!
-
----
-
-## 7. Executar
+### Com Docker Compose (Recomendado)
 
 ```bash
-# Iniciar o bot (aguarda o horário agendado)
+# Iniciar todos os serviços
+docker-compose up -d
+
+# Ver logs
+docker-compose logs -f
+
+# Ver logs de um serviço específico
+docker-compose logs -f worker-intent
+```
+
+### Localmente
+
+```bash
+# Iniciar workers (em terminais separados)
+node src/workers/intent.js
+node src/workers/search.js
+node src/workers/response.js
+node src/workers/telegram-sender.js
+
+# Iniciar o Telegram producer
+node src/telegram-producer.js
+
+# Iniciar o app principal (cron)
 npm start
 
-# Enviar digest imediatamente (para testar)
+# Enviar digest agora
 npm start -- --now
 ```
 
 ---
 
-## 8. Estrutura do Projeto
+## Arquitetura
+
+### Estrutura do Projeto
 
 ```
-daily-digest/
-├── src/
-│   ├── index.js            # Entry point + cron scheduler
-│   ├── setup.js            # CLI interativo para configurar interesses
-│   ├── digest.js           # Orquestrador: busca → LLM → Telegram
-│   ├── search.js           # Ollama Web Search API
-│   ├── analysis.js         # Análise inteligente de resultados
-│   ├── llm.js              # Ollama: extração de interesses + geração de digest
-│   ├── telegram.js         # Envio via Telegram Bot
-│   ├── telegram-polling.js # Polling do Telegram
-│   ├── telegram-commands.js # Comandos do bot
-│   ├── chat.js             # Chat inteligente com LLM
-│   ├── db.js               # Conexão MongoDB Atlas
-│   └── test-telegram.js   # Script de teste
-├── models/
-│   └── UserPreferences.js  # Schema Mongoose
-├── .env.example
-├── package.json
-└── README.md
+src/
+├── index.js              # Entry point + cron scheduler
+├── setup.js              # CLI interativo para configurar interesses
+├── digest.js             # Orquestrador: busca → LLM → Telegram
+├── search.js             # Ollama Web Search API
+├── llm.js                # Conexões Ollama
+├── agents.js             # Agentes de pesquisa (Researcher, Analyst, Writer)
+├── model-router.js       # Seleciona modelo cloud/local
+├── memory.js             # Histórico de conversas persistido
+├── queue.js              # Conexão RabbitMQ
+├── telegram.js           # Envio via Telegram Bot
+├── telegram-producer.js  # Recebe mensagens → fila
+├── telegram-polling.js    # Polling do Telegram
+├── telegram-commands.js   # Comandos do bot
+├── chat.js               # Chat inteligente com LLM
+├── db.js                 # Conexão MongoDB
+├── workers/
+│   ├── intent.js         # Classifica intents
+│   ├── search.js         # Realiza buscas na web
+│   ├── response.js       # Gera respostas com LLM
+│   └── telegram-sender.js # Envia mensagens ao Telegram
 ```
 
 ---
 
-## Fluxo de Funcionamento
+## Arquitetura de Filas (RabbitMQ)
 
 ```
-[node-cron — horário configurado]
-          ↓
-[Busca usuários ativos no MongoDB Atlas]
-          ↓
-[Para cada usuário:]
-  → Pega interesses do MongoDB
-  → Busca artigos via Ollama Web Search
-  → LLM local (Ollama) gera resumo personalizado
-  → Envia via Telegram Bot
-  → Atualiza lastDigestSentAt no MongoDB
+Telegram ──▶ Intent Queue ──▶ Intent Worker (classifica)
+                              │
+         ┌────────────────────┴────────────────────┐
+         ▼                                         ▼
+  Search Queue                              Response Queue
+  (intent=search)                           (intent=chat)
+         │                                         │
+         ▼                                         ▼
+  Search Worker                              Response Worker
+         │                                         │
+         └────────────────────┬────────────────────┘
+                               ▼
+                        Telegram Sender
 ```
+
+### Filas
+| Fila | Descrição |
+|------|-----------|
+| `telegram.incoming` | Mensagens recebidas |
+| `intent.classify` | Classificação de intent |
+| `web.search` | Buscas na web |
+| `response.generate` | Geração de resposta |
+| `telegram.outgoing` | Mensagens para enviar |
+
+### Workers
+| Worker | Função |
+|--------|--------|
+| `telegram-producer` | Recebe mensagens do Telegram |
+| `worker-intent` | Classifica intent (search/chat/digest) |
+| `worker-search` | Realiza buscas na web |
+| `worker-response` | Gera respostas com LLM |
+| `worker-sender` | Envia mensagens ao Telegram |
+
+---
+
+## Recursos
+
+### Model Router
+
+Sistema inteligente que seleciona o melhor modelo baseado na tarefa:
+- **Raciocínio**: `gpt-oss:20b-cloud` → `qwen3.5` → local
+- **Chat/Digest**: `qwen3.5:4b-cloud` → local
+
+### Agentes de Pesquisa
+
+- **Researcher**: Coleta fontes sobre o tópico
+- **Analyst**: Analisa e sintetiza informações
+- **Writer**: Gera o conteúdo final
+
+### Memória Persistente
+
+Histórico de conversas salvo no MongoDB (janela de 10 mensagens).
+
+---
+
+## Docker Compose - Serviços
+
+| Serviço | Descrição | Porta |
+|---------|-----------|-------|
+| `mongodb` | Banco de dados | 27017 |
+| `rabbitmq` | Message broker | 5672, 15672 |
+| `app` | Digest diário (cron) | - |
+| `worker-intent` | Classifica intents | - |
+| `worker-search` | Busca na web | - |
+| `worker-response` | Gera respostas | - |
+| `worker-sender` | Envia mensagens | - |
 
 ---
 
 ## Dicas
 
-- **Múltiplos usuários**: rode `npm run setup` várias vezes com telefones diferentes
-- **Testar sem esperar o cron**: `npm start -- --now`
-- **Trocar modelo LLM**: edite `OLLAMA_MODEL` no `.env` (ex: `phi3.5:mini` para PCs com menos RAM)
-- **Chat com o bot**: converse diretamente com o bot no Telegram para fazer perguntas
+- **Testar sem esperar cron**: `npm start -- --now`
+- **Trocar modelo LLM**: edite `OLLAMA_MODEL` no `.env`
+- **Multiple users**: rode `npm run setup` várias vezes
+- **RabbitMQ UI**: http://localhost:15672 (guest/guest)
