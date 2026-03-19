@@ -5,29 +5,22 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "setup": "node src/setup.js",
-    "research": "node -e \"import('./src/agents.js').then(m => m.runResearchPipeline(process.argv[2])).catch(console.error)\"",
-    "test:telegram": "node src/test-telegram.js",
-    "test:search": "node src/test-search.js",
-    "telegram": "node src/telegram-producer.js",
-    "worker:intent": "node src/workers/intent.js",
-    "worker:search": "node src/workers/search.js",
+    "start":           "node src/index.js",
+    "setup":           "node src/setup.js",
+    "worker:intent":   "node src/workers/intent.js",
+    "worker:search":   "node src/workers/search.js",
     "worker:response": "node src/workers/response.js",
-    "worker:sender": "node src/workers/telegram-sender.js"
+    "worker:sender":   "node src/workers/telegram-sender.js"
   },
   "dependencies": {
     "amqplib": "^0.10.9",
     "chalk": "^5.3.0",
     "dotenv": "^16.4.5",
-    "express": "^5.2.1",
     "inquirer": "^9.2.20",
     "mongodb": "^7.1.0",
-    "mongoose": "^8.3.0",
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
     "node-telegram-bot-api": "^0.67.0",
-    "ollama": "^0.5.0",
-    "@tavily/core": "^0.3.0"
+    "ollama": "^0.5.0"
   }
 }

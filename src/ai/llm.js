@@ -1,6 +1,5 @@
-// src/llm.js
-// LLM via model-router — usa cloud (qwen3.5) ou local (qwen2.5:3b) automaticamente
-// FIX: think:false em todas as chamadas — gpt-oss:20b retorna response vazio sem isso
+// src/ai/llm.js
+// LLM via model-router — usa cloud (gpt-oss/qwen3.5) ou local automaticamente
 
 import { getActiveModel } from './model-router.js';
 
@@ -34,7 +33,6 @@ export async function classifyIntent(message) {
   }
 }
 
-// Extrai query curta de mensagem longa — sempre usa o ano atual
 export async function extractSearchQuery(message) {
   const year = new Date().getFullYear();
   try {

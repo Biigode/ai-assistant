@@ -1,5 +1,5 @@
-// src/queue.js
-// RabbitMQ connection and channel management
+// src/core/queue.js
+// RabbitMQ — gerenciamento de filas
 
 import amqp from 'amqplib';
 
@@ -7,56 +7,42 @@ let connection = null;
 let channel = null;
 
 export const QUEUES = {
-  TELEGRAM_INCOMING: 'telegram.incoming',
-  INTENT_CLASSIFY: 'intent.classify',
-  WEB_SEARCH: 'web.search',
-  RESPONSE_GENERATE: 'response.generate',
-  TELEGRAM_OUTGOING: 'telegram.outgoing'
+  TELEGRAM_INCOMING:  'telegram.incoming',
+  INTENT_CLASSIFY:    'intent.classify',
+  WEB_SEARCH:         'web.search',
+  RESPONSE_GENERATE:  'response.generate',
+  TELEGRAM_OUTGOING:  'telegram.outgoing',
 };
 
 export async function connectQueue() {
   const url = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
-  console.log(`🔌 Conectando ao RabbitMQ: ${url.replace(/(:\/\/.*:).*@/, '$1****')}`);
-  
+  console.log(`🔌 Conectando ao RabbitMQ: ${url.replace(/(:\\/\\/.*:).*@/, '$1****')}`);
+
   const maxRetries = 10;
-  const retryDelay = 3000;
-  
   for (let i = 0; i < maxRetries; i++) {
     try {
       connection = await amqp.connect(url);
       channel = await connection.createChannel();
-      
-      // Declare all queues
       for (const queue of Object.values(QUEUES)) {
         await channel.assertQueue(queue, { durable: true });
       }
-      
       console.log('✅ RabbitMQ connected');
       return channel;
     } catch (err) {
-      console.error(`❌ RabbitMQ connection failed (${i + 1}/${maxRetries}):`, err.message);
-      if (i < maxRetries - 1) {
-        console.log(`⏳ Tentando novamente em ${retryDelay/1000}s...`);
-        await new Promise(r => setTimeout(r, retryDelay));
-      } else {
-        throw err;
-      }
+      console.error(`❌ RabbitMQ (${i + 1}/${maxRetries}):`, err.message);
+      if (i < maxRetries - 1) await new Promise(r => setTimeout(r, 3000));
+      else throw err;
     }
   }
 }
 
 export function getChannel() {
-  if (!channel) {
-    throw new Error('Queue not connected. Call connectQueue() first.');
-  }
+  if (!channel) throw new Error('Queue not connected. Call connectQueue() first.');
   return channel;
 }
 
 export async function publish(queue, message) {
-  const ch = getChannel();
-  ch.sendToQueue(queue, Buffer.from(JSON.stringify(message)), {
-    persistent: true
-  });
+  getChannel().sendToQueue(queue, Buffer.from(JSON.stringify(message)), { persistent: true });
 }
 
 export async function consume(queue, handler) {
@@ -64,12 +50,11 @@ export async function consume(queue, handler) {
   await ch.consume(queue, async (msg) => {
     if (msg) {
       try {
-        const content = JSON.parse(msg.content.toString());
-        await handler(content);
+        await handler(JSON.parse(msg.content.toString()));
         ch.ack(msg);
       } catch (err) {
         console.error(`❌ Error processing message from ${queue}:`, err);
-        ch.nack(msg, false, false); // Don't requeue on error
+        ch.nack(msg, false, false);
       }
     }
   });

@@ -39,25 +39,20 @@ services:
       start_period: 30s
 
   # ── App principal ───────────────────────────────────────────────────────────
-  # ÚNICO serviço que faz polling do Telegram — não suba telegram-producer junto
 
   app:
     build: .
     container_name: ai-assistant-app
-    env_file:
-      - .env
+    env_file: .env
     environment:
       - NODE_ENV=production
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OLLAMA_CLOUD_URL=http://host.docker.internal:11434
+      - OLLAMA_CLOUD_URL=https://ollama.com
       - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-      - 1.1.1.1
+    dns: [8.8.8.8, 8.8.4.4, 1.1.1.1]
     networks:
       - ai-net
     depends_on:
@@ -68,13 +63,12 @@ services:
     command: ["node", "src/index.js"]
     restart: unless-stopped
 
-  # ── Workers RabbitMQ ────────────────────────────────────────────────────────
+  # ── Workers RabbitMQ (opcionais — o fluxo principal não depende deles) ──────
 
   worker-intent:
     build: .
     container_name: ai-assistant-worker-intent
-    env_file:
-      - .env
+    env_file: .env
     environment:
       - NODE_ENV=production
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -82,9 +76,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    dns: [8.8.8.8, 8.8.4.4]
     networks:
       - ai-net
     depends_on:
@@ -98,8 +90,7 @@ services:
   worker-search:
     build: .
     container_name: ai-assistant-worker-search
-    env_file:
-      - .env
+    env_file: .env
     environment:
       - NODE_ENV=production
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -107,9 +98,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    dns: [8.8.8.8, 8.8.4.4]
     networks:
       - ai-net
     depends_on:
@@ -121,8 +110,7 @@ services:
   worker-response:
     build: .
     container_name: ai-assistant-worker-response
-    env_file:
-      - .env
+    env_file: .env
     environment:
       - NODE_ENV=production
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -130,9 +118,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    dns: [8.8.8.8, 8.8.4.4]
     networks:
       - ai-net
     depends_on:
@@ -146,15 +132,11 @@ services:
   worker-sender:
     build: .
     container_name: ai-assistant-worker-sender
-    env_file:
-      - .env
+    env_file: .env
     environment:
       - NODE_ENV=production
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
-      - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    dns: [8.8.8.8, 8.8.4.4]
     networks:
       - ai-net
     depends_on:

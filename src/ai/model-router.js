@@ -1,4 +1,4 @@
-// src/model-router.js
+// src/ai/model-router.js
 // Roteador de modelos — uma única OLLAMA_API_KEY serve para cloud E web search.
 //
 // Hierarquia por tipo de tarefa:
@@ -9,7 +9,7 @@ import { Ollama } from 'ollama';
 
 const LOCAL_HOST = process.env.OLLAMA_BASE_URL  || 'http://localhost:11434';
 const CLOUD_HOST = process.env.OLLAMA_CLOUD_URL || 'https://ollama.com';
-const CLOUD_KEY  = process.env.OLLAMA_API_KEY;   // única key — cloud + web search
+const CLOUD_KEY  = process.env.OLLAMA_API_KEY;
 
 const MODEL = {
   reasoning: process.env.OLLAMA_MODEL_REASONING || 'gpt-oss:20b-cloud',
@@ -25,10 +25,8 @@ const TTL = 5 * 60 * 1000;
 
 async function isAvailable(model) {
   if (!CLOUD_KEY) return false;
-
   const hit = cache.get(model);
   if (hit && Date.now() - hit.ts < TTL) return hit.ok;
-
   try {
     await ollamaCloud.generate({ model, prompt: 'hi', options: { num_predict: 1 } });
     cache.set(model, { ok: true, ts: Date.now() });
