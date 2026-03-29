@@ -1,3 +1,16 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json tsconfig.json tsconfig.build.json ./
+RUN npm ci
+
+COPY src/ src/
+
+RUN npx tsc -p tsconfig.build.json
+
+# ── Production ────────────────────────────────────────────────────────────────
+
 FROM node:20-alpine
 
 WORKDIR /app
@@ -5,10 +18,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 
-COPY . .
-
 RUN apk add --no-cache libc6-compat
-
 RUN npm rebuild
 
-CMD ["node", "src/index.js"]
+COPY --from=builder /app/dist/ dist/
+
+CMD ["node", "dist/index.js"]

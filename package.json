@@ -2,15 +2,18 @@
   "name": "daily-digest",
   "version": "2.0.0",
   "description": "Daily news digest via Telegram com LLM local + cloud e pipeline de agentes",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "start":           "node src/index.js",
-    "setup":           "node src/setup.js",
-    "worker:intent":   "node src/workers/intent.js",
-    "worker:search":   "node src/workers/search.js",
-    "worker:response": "node src/workers/response.js",
-    "worker:sender":   "node src/workers/telegram-sender.js"
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "polling": "tsx src/telegram/polling.ts",
+    "queue:message-handler": "node dist/queue-workers/message-handler.js",
+    "queue:intent": "node dist/queue-workers/intent.js",
+    "queue:search": "node dist/queue-workers/search.js",
+    "queue:response": "node dist/queue-workers/response.js",
+    "queue:sender": "node dist/queue-workers/telegram-sender.js"
   },
   "dependencies": {
     "amqplib": "^0.10.9",
@@ -22,5 +25,12 @@
     "node-fetch": "^3.3.2",
     "node-telegram-bot-api": "^0.67.0",
     "ollama": "^0.5.0"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.8",
+    "@types/node": "^25.5.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }

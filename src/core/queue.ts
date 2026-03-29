@@ -1,10 +1,10 @@
-// src/core/queue.js
+// src/core/queue.ts
 // RabbitMQ — gerenciamento de filas
 
 import amqp from 'amqplib';
 
-let connection = null;
-let channel = null;
+let connection: amqp.ChannelModel | null = null;
+let channel: amqp.Channel | null = null;
 
 export const QUEUES = {
   TELEGRAM_INCOMING:  'telegram.incoming',
@@ -12,11 +12,13 @@ export const QUEUES = {
   WEB_SEARCH:         'web.search',
   RESPONSE_GENERATE:  'response.generate',
   TELEGRAM_OUTGOING:  'telegram.outgoing',
-};
+} as const;
 
-export async function connectQueue() {
+export type QueueName = typeof QUEUES[keyof typeof QUEUES];
+
+export async function connectQueue(): Promise<amqp.Channel> {
   const url = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
-  console.log(`🔌 Conectando ao RabbitMQ: ${url.replace(/(:\\/\\/.*:).*@/, '$1****')}`);
+  console.log(`🔌 Conectando ao RabbitMQ: ${url.replace(/(:\/\/[^:]+:[^@]+)@/, '$1****')}`);
 
   const maxRetries = 10;
   for (let i = 0; i < maxRetries; i++) {
@@ -27,30 +29,31 @@ export async function connectQueue() {
         await channel.assertQueue(queue, { durable: true });
       }
       console.log('✅ RabbitMQ connected');
-      return channel;
+      return channel!;
     } catch (err) {
-      console.error(`❌ RabbitMQ (${i + 1}/${maxRetries}):`, err.message);
+      console.error(`❌ RabbitMQ (${i + 1}/${maxRetries}):`, (err as Error).message);
       if (i < maxRetries - 1) await new Promise(r => setTimeout(r, 3000));
       else throw err;
     }
   }
+  throw new Error('RabbitMQ: max retries exceeded');
 }
 
-export function getChannel() {
+export function getChannel(): amqp.Channel {
   if (!channel) throw new Error('Queue not connected. Call connectQueue() first.');
   return channel;
 }
 
-export async function publish(queue, message) {
+export async function publish(queue: QueueName, message: unknown): Promise<void> {
   getChannel().sendToQueue(queue, Buffer.from(JSON.stringify(message)), { persistent: true });
 }
 
-export async function consume(queue, handler) {
+export async function consume<T = unknown>(queue: QueueName, handler: (msg: T) => Promise<void>): Promise<void> {
   const ch = getChannel();
   await ch.consume(queue, async (msg) => {
     if (msg) {
       try {
-        await handler(JSON.parse(msg.content.toString()));
+        await handler(JSON.parse(msg.content.toString()) as T);
         ch.ack(msg);
       } catch (err) {
         console.error(`❌ Error processing message from ${queue}:`, err);
@@ -60,7 +63,7 @@ export async function consume(queue, handler) {
   });
 }
 
-export async function closeQueue() {
+export async function closeQueue(): Promise<void> {
   if (channel) await channel.close();
   if (connection) await connection.close();
 }

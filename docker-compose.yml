@@ -1,5 +1,4 @@
 services:
-
   # ── Infraestrutura ──────────────────────────────────────────────────────────
 
   mongodb:
@@ -60,10 +59,33 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
-    command: ["node", "src/index.js"]
+    command: ["node", "dist/index.js"]
     restart: unless-stopped
 
-  # ── Workers RabbitMQ (opcionais — o fluxo principal não depende deles) ──────
+  # ── Workers RabbitMQ ─────────────────────────────────────────────────────────
+
+  worker-message-handler:
+    build: .
+    container_name: ai-assistant-worker-message-handler
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_CLOUD_URL=https://ollama.com
+      - MONGODB_URI=mongodb://mongodb:27017/ai-assistant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    dns: [8.8.8.8, 8.8.4.4]
+    networks:
+      - ai-net
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    command: ["node", "dist/queue-workers/message-handler.js"]
+    restart: unless-stopped
 
   worker-intent:
     build: .
@@ -84,7 +106,7 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
-    command: ["node", "src/workers/intent.js"]
+    command: ["node", "dist/queue-workers/intent.js"]
     restart: unless-stopped
 
   worker-search:
@@ -104,7 +126,7 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-    command: ["node", "src/workers/search.js"]
+    command: ["node", "dist/queue-workers/search.js"]
     restart: unless-stopped
 
   worker-response:
@@ -126,7 +148,7 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
-    command: ["node", "src/workers/response.js"]
+    command: ["node", "dist/queue-workers/response.js"]
     restart: unless-stopped
 
   worker-sender:
@@ -136,13 +158,13 @@ services:
     environment:
       - NODE_ENV=production
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
-    dns: [8.8.8.8, 8.8.4.4]
+    dns: [8.8.8.8, 8.8.4.4, 1.1.1.1]
     networks:
       - ai-net
     depends_on:
       rabbitmq:
         condition: service_healthy
-    command: ["node", "src/workers/telegram-sender.js"]
+    command: ["node", "dist/queue-workers/telegram-sender.js"]
     restart: unless-stopped
 
 networks:
