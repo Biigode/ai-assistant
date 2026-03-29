@@ -4,17 +4,17 @@ Assistente de IA para Telegram com resumo diário de notícias, chat inteligente
 
 ## Stack
 
-| Camada | Tecnologia |
-|---|---|
-| Linguagem | TypeScript (ES Modules) |
-| Runtime | Node.js 20 |
-| Mensageria | RabbitMQ |
-| Busca | Ollama Web Search API |
-| LLM | Ollama (local + cloud) |
-| Banco de dados | MongoDB 7 |
-| Mensagens | Telegram Bot API |
-| Agendamento | node-cron |
-| Container | Docker Compose (multi-stage build) |
+| Camada         | Tecnologia                         |
+| -------------- | ---------------------------------- |
+| Linguagem      | TypeScript (ES Modules)            |
+| Runtime        | Node.js 20                         |
+| Mensageria     | RabbitMQ                           |
+| Busca          | Ollama Web Search API              |
+| LLM            | Ollama (local + cloud)             |
+| Banco de dados | MongoDB 7                          |
+| Mensagens      | Telegram Bot API                   |
+| Agendamento    | node-cron                          |
+| Container      | Docker Compose (multi-stage build) |
 
 ---
 
@@ -68,6 +68,7 @@ docker-compose up -d mongodb rabbitmq
 2. Use `/newbot` para criar o bot
 3. Copie o **Bot Token**
 4. Cole no `.env`:
+
 ```
 TELEGRAM_BOT_TOKEN=seu_token_aqui
 ```
@@ -79,11 +80,13 @@ Para tarefas de raciocínio profundo:
 1. Crie conta em https://ollama.com
 2. Gere uma API Key em **Settings → API Keys**
 3. Adicione no `.env`:
+
 ```
 OLLAMA_API_KEY=sua_chave_aqui
 ```
 
 O sistema escolhe automaticamente:
+
 - **Modelos cloud**: para raciocínio profundo (agentes, análise)
 - **Modelos locais**: fallback quando offline
 
@@ -213,23 +216,23 @@ Telegram Polling
 
 ### Filas
 
-| Fila | Descrição |
-|------|-----------|
-| `telegram.incoming` | Mensagens e callbacks recebidos |
-| `intent.classify` | Classificação de intent |
-| `web.search` | Buscas na web |
-| `response.generate` | Geração de resposta com LLM |
+| Fila                | Descrição                         |
+| ------------------- | --------------------------------- |
+| `telegram.incoming` | Mensagens e callbacks recebidos   |
+| `intent.classify`   | Classificação de intent           |
+| `web.search`        | Buscas na web                     |
+| `response.generate` | Geração de resposta com LLM       |
 | `telegram.outgoing` | Mensagens para enviar ao Telegram |
 
 ### Workers
 
-| Worker | Comando | Função |
-|--------|---------|--------|
-| `message-handler` | `npm run queue:message-handler` | Processa mensagens, menus e callbacks |
-| `intent` | `npm run queue:intent` | Classifica intent (search/chat/digest) |
-| `search` | `npm run queue:search` | Realiza buscas na web via Ollama |
-| `response` | `npm run queue:response` | Gera respostas com LLM |
-| `sender` | `npm run queue:sender` | Envia mensagens ao Telegram |
+| Worker            | Comando                         | Função                                 |
+| ----------------- | ------------------------------- | -------------------------------------- |
+| `message-handler` | `npm run queue:message-handler` | Processa mensagens, menus e callbacks  |
+| `intent`          | `npm run queue:intent`          | Classifica intent (search/chat/digest) |
+| `search`          | `npm run queue:search`          | Realiza buscas na web via Ollama       |
+| `response`        | `npm run queue:response`        | Gera respostas com LLM                 |
+| `sender`          | `npm run queue:sender`          | Envia mensagens ao Telegram            |
 
 ---
 
@@ -238,6 +241,7 @@ Telegram Polling
 ### Model Router
 
 Sistema inteligente que seleciona o melhor modelo baseado na tarefa:
+
 - **Raciocínio** (agentes, briefings): `gpt-oss:20b-cloud` → `qwen3.5` → local
 - **Chat/Digest** (tarefas simples): `qwen3.5:4b-cloud` → `gpt-oss` → local
 
@@ -263,28 +267,28 @@ Bot com menus inline para configuração de interesses, estilo de resumo, horár
 
 ## Docker Compose — Serviços
 
-| Serviço | Descrição | Porta |
-|---------|-----------|-------|
-| `mongodb` | Banco de dados (Mongo 7) | 27017 |
-| `rabbitmq` | Message broker (management UI) | 5672, 15672 |
-| `app` | Entry point — polling + cron | — |
-| `worker-message-handler` | Processa mensagens/callbacks | — |
-| `worker-intent` | Classifica intents | — |
-| `worker-search` | Busca na web | — |
-| `worker-response` | Gera respostas | — |
-| `worker-sender` | Envia mensagens | — |
+| Serviço                  | Descrição                      | Porta       |
+| ------------------------ | ------------------------------ | ----------- |
+| `mongodb`                | Banco de dados (Mongo 7)       | 27017       |
+| `rabbitmq`               | Message broker (management UI) | 5672, 15672 |
+| `app`                    | Entry point — polling + cron   | —           |
+| `worker-message-handler` | Processa mensagens/callbacks   | —           |
+| `worker-intent`          | Classifica intents             | —           |
+| `worker-search`          | Busca na web                   | —           |
+| `worker-response`        | Gera respostas                 | —           |
+| `worker-sender`          | Envia mensagens                | —           |
 
 ---
 
 ## Scripts npm
 
-| Script | Descrição |
-|--------|-----------|
-| `npm run build` | Compila TypeScript para `dist/` |
-| `npm start` | Inicia app compilado (polling + cron) |
-| `npm run dev` | Inicia com `tsx` (dev, sem build) |
-| `npm run polling` | Apenas polling do Telegram (dev) |
-| `npm run queue:*` | Inicia workers individuais |
+| Script            | Descrição                             |
+| ----------------- | ------------------------------------- |
+| `npm run build`   | Compila TypeScript para `dist/`       |
+| `npm start`       | Inicia app compilado (polling + cron) |
+| `npm run dev`     | Inicia com `tsx` (dev, sem build)     |
+| `npm run polling` | Apenas polling do Telegram (dev)      |
+| `npm run queue:*` | Inicia workers individuais            |
 
 ---
 
